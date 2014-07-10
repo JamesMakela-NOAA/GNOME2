@@ -75,14 +75,14 @@ TideCurCycleMover::TideCurCycleMover (TMap *owner, char *name) : TCATSMover(owne
 }
 
 
-void TideCurCycleMover::Dispose ()
+/*void TideCurCycleMover::Dispose ()
 {
-	/*if (fGrid)
-	{
-		fGrid -> Dispose();
-		delete fGrid;
-		fGrid = nil;
-	}*/
+	//if (fGrid)
+	//{
+		//fGrid -> Dispose();
+		//delete fGrid;
+		//fGrid = nil;
+	//}
 
 	if(fTimeHdl) {DisposeHandle((Handle)fTimeHdl); fTimeHdl=0;}
 	if(fStartData.dataHdl)DisposeLoadedData(&fStartData); 
@@ -93,7 +93,7 @@ void TideCurCycleMover::Dispose ()
 
 
 	TCATSMover::Dispose ();
-}
+}*/
 
 
 Boolean IsTideCurCycleFile (char *path, short *gridType)
@@ -874,7 +874,11 @@ void TideCurCycleMover::Draw(Rect r, WorldRect view)
 				if (fTimeAlpha==-1)
 				{
 					//Seconds relTime = time - model->GetStartTime();
-					Seconds relTime = time - fModelStartTime;
+					Seconds relTime;
+					if (fModelStartTime==0)	// haven't called prepareformodelstep yet, so get the first (or could set it...)
+						relTime = (*fTimeHdl)[0];
+					else
+						relTime = time - fModelStartTime;
 					startTime = (*fTimeHdl)[fStartData.timeIndex];
 					endTime = (*fTimeHdl)[fEndData.timeIndex];
 					//timeAlpha = (endTime - time)/(double)(endTime - startTime);

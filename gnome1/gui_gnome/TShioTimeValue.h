@@ -15,6 +15,10 @@ class TShioTimeValue : virtual public ShioTimeValue_c, public TOSSMTimeValue
 								TShioTimeValue (TMover *theOwner);
 								TShioTimeValue (TMover *theOwner,TimeValuePairH tvals);
 		virtual					   ~TShioTimeValue () { this->Dispose (); }
+
+		virtual ClassID 		GetClassID () { return TYPE_SHIOTIMEVALUES; }
+		virtual Boolean			IAm(ClassID id) { if(id==TYPE_SHIOTIMEVALUES) return TRUE; return TOSSMTimeValue::IAm(id); }
+
 		virtual OSErr 			MakeClone(TShioTimeValue **clonePtrPtr);
 		virtual OSErr 			BecomeClone(TShioTimeValue *clone);
 		//virtual void			Dispose ();
@@ -32,6 +36,7 @@ class TShioTimeValue : virtual public ShioTimeValue_c, public TOSSMTimeValue
 		virtual OSErr 			CheckAndPassOnMessage(TModelMessage *message);
 };
 
+bool IsShioFile(vector<string> &linesInFile);
 Boolean IsShioFile(char* path);
 char* GetKeyedLine(CHARH f, const char*key, long lineNum, char *strLine);
 

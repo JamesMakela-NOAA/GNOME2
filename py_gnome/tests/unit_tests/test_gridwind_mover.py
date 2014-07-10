@@ -11,8 +11,11 @@ import pytest
 from gnome.movers import GridWindMover
 from gnome.utilities import time_utils
 from gnome.utilities.remote_data import get_datafile
+from gnome.persist import load
 
 from conftest import sample_sc_release
+# default settings are the same for both objects
+from test_wind_mover import _defaults
 
 here = os.path.dirname(__file__)
 wind_dir = os.path.join(here, 'sample_data', 'winds')
@@ -40,12 +43,12 @@ def test_exceptions():
         # todo: Following fails - cannot raise exception during initialize
         # Need to look into this issue
         #gw = GridWindMover(grid_file, uncertain_angle_units='xyz')
-        gw = GridWindMover(wind_file)   # todo: why does this fail
+        gw = GridWindMover(wind_file,topology_file)   # todo: why does this fail
         gw.set_uncertain_angle(.4, 'xyz')
 
 
 def test_string_repr_no_errors():
-    gw = GridWindMover(wind_file)
+    gw = GridWindMover(wind_file,topology_file)
     print
     print '======================'
     print 'repr(WindMover): '
@@ -121,13 +124,21 @@ w_grid = GridWindMover(wind_file, topology_file)
 def test_default_props():
     """
     test default properties
+    use _defaults helper function defined in test_wind_mover.py
     """
-    assert w_grid.active == True  # timespan is as big as possible
-    assert w_grid.uncertain_duration == 24
-    assert w_grid.uncertain_time_delay == 0
-    assert w_grid.uncertain_speed_scale == 2
-    assert w_grid.uncertain_angle_scale == 0.4
-    assert w_grid.uncertain_angle_units == 'rad'
+    #==========================================================================
+    # assert w_grid.active == True  # timespan is as big as possible
+    # assert w_grid.uncertain_duration == 3.0
+    # assert w_grid.uncertain_time_delay == 0
+    # assert w_grid.uncertain_speed_scale == 2
+    # assert w_grid.uncertain_angle_scale == 0.4
+    # assert w_grid.uncertain_angle_units == 'rad'
+    #==========================================================================
+    assert w_grid.wind_scale == 1
+    assert w_grid.extrapolate == False
+    assert w_grid.time_offset == 0
+
+    _defaults(w_grid)
 
 
 def test_uncertain_time_delay():
@@ -170,15 +181,17 @@ def _uncertain_loop(pSpill, wind):
     return u_delta
 
 
-def test_new_from_dict():
+def test_serialize_deserialize():
     """
     test to_dict function for GridWind object
     create a new grid_wind object and make sure it has same properties
     """
 
-    grid_wind = GridWindMover(wind_file)
-    dict_ = grid_wind.to_dict('create')
+    grid_wind = GridWindMover(wind_file, topology_file)
+    serial = grid_wind.serialize('webapi')
+    dict_ = GridWindMover.deserialize(serial)
     gw2 = GridWindMover.new_from_dict(dict_)
+
     assert grid_wind == gw2
 
-
+    grid_wind.update_from_dict(dict_)

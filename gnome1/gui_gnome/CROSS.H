@@ -10,6 +10,15 @@
 //extern THPrint gPrRecHdl;
 //#endif
 
+#ifndef pyGNOME
+extern RGBColor colors[];
+
+enum { BLACK = 1, WHITE, DARKGRAY, GRAY, LIGHTGRAY,
+	BROWN, LIGHTBROWN, OLIVE = 7, DARKGREEN, GREEN,
+	LIGHTBLUE, BLUE, DARKBLUE, PURPLE, PINK, RED, YELLOW, OTHERCOLOR }; // colors
+
+#endif
+
 ///// MISC ///////////////////////////////////////////////////////////////////////////
 
 void BasicInit();
@@ -306,6 +315,7 @@ OSErr ForEachItemInFolder(short vRefNum, long dirID, CHARPTR pathName,
 						  OSErr (*proc)(CINFOPBRECPTR), Boolean (*filter)(CINFOPBRECPTR));
 OSErr DeleteFilesInFolder(short vRefNum, long dirID, CHARPTR pathName);
 OSErr DeleteFilesInFolderSpecifiedByFullPathWithDelimiter(char* path);
+OSErr CreateFoldersInDirectoryPath(char *path);
 #ifdef MAC
 Boolean IsBundledApplication(char *path);
 void ChopExtensionAndHiddenPackageFolders(char *fullPath);

@@ -31,14 +31,14 @@ cdef extern from "TimeGridVel_c.h":
 # comment for now so it doesn't give compile time errors - not sure LELIST_c is used anywhere either
 #IF not HEADERS.count("_LIST_"):
 #    DEF HEADERS = HEADERS +  ["_LE_LIST_"]
-cdef extern from "LEList_c.h":
-    cdef cppclass LEList_c:
-        long numOfLEs
-        LETYPE fLeType
+# cdef extern from "LEList_c.h":
+#     cdef cppclass LEList_c:
+#         long numOfLEs
+#         LETYPE fLeType
 
-cdef extern from "Map_c.h":
-    cdef cppclass Map_c:
-        pass
+# cdef extern from "Map_c.h":
+#     cdef cppclass Map_c:
+#         pass
 
 """
 movers:
@@ -78,6 +78,7 @@ cdef extern from "Random_c.h":
     cdef cppclass Random_c(Mover_c):
         Random_c() except +
         double fDiffusionCoefficient
+        double fUncertaintyFactor
         OSErr get_move(int n, unsigned long model_time, unsigned long step_len, WorldPoint3D* ref, WorldPoint3D* delta, short* LE_status, LEType spillType, long spillID)        
         
 cdef extern from "RandomVertical_c.h":
@@ -87,8 +88,12 @@ cdef extern from "RandomVertical_c.h":
         double fVerticalBottomDiffusionCoefficient
         double fMixedLayerDepth
         OSErr get_move(int n, unsigned long model_time, unsigned long step_len, WorldPoint3D* ref, WorldPoint3D* delta, short* LE_status, LEType spillType, long spillID)        
-        
+
+     
 cdef extern from "RiseVelocity_c.h":
+    OSErr get_rise_velocity(int n, double *rise_vel, double *le_density, double *le_drop_size, double water_vis, double water_density)
+    
+    # the mover class, above is just a function for computing rise velocity
     cdef cppclass RiseVelocity_c(Mover_c):
         RiseVelocity_c() except +
         #double water_density
@@ -108,6 +113,7 @@ cdef extern from "CATSMover_c.h":
    cdef cppclass CATSMover_c(CurrentMover_c):
         CATSMover_c() except +
         double          fEddyDiffusion
+        double          fEddyV0
         short           scaleType                 
         double          scaleValue
         Boolean         bTimeFileActive
@@ -136,37 +142,83 @@ cdef extern from "CATSMover_c.h":
         void  SetTimeDep(OSSMTimeValue_c *ossm)
        
 
+cdef extern from "ComponentMover_c.h":
+   #============================================================================
+   # ctypedef struct TCM_OPTIMZE:
+   #    Boolean isOptimizedForStep
+   #    Boolean isFirstStep
+   #    double  value
+   #============================================================================
+   cdef cppclass ComponentMover_c(CurrentMover_c):
+        ComponentMover_c() except +
+        double          pat1Angle
+        double          pat2Angle
+        double          pat1Speed
+        double          pat2Speed
+        long            pat1SpeedUnits
+        long            pat2SpeedUnits
+        double          pat1ScaleToValue
+        double          pat2ScaleToValue
+        #Boolean         bTimeFileActive
+        long            scaleBy
+        WorldPoint      refP
+        Boolean         bUseAveragedWinds
+        Boolean         bExtrapolateWinds
+        #Boolean         bUseMainDialogScaleFactor
+        double          fScaleFactorAveragedWinds
+        double          fPowerFactorAveragedWinds
+        long            fPastHoursToAverage
+	
+        int   TextRead(char* catsPath1, char* catsPath2)
+        void  SetRefPosition (WorldPoint p)    
+       
+        OSErr get_move(int n, unsigned long model_time, unsigned long step_len, WorldPoint3D* ref, WorldPoint3D* delta, short* LE_status, LEType spillType, long spillID)
+        void  SetTimeFile(OSSMTimeValue_c *ossm)	
+       
+
 cdef extern from "GridCurrentMover_c.h":
     
-    cdef struct GridCurrentVariables:
-        char        *pathName
-        char        *userName
+    cdef struct UncertaintyParameters:
         double     alongCurUncertainty
         double     crossCurUncertainty
         double     uncertMinimumInMPS
-        double     curScale
         double     startTimeInHrs
         double     durationInHrs
-        short        gridType
-        Boolean     bShowGrid
-        Boolean     bShowArrows
-        Boolean    bUncertaintyPointOpen
-        double     arrowScale
-        double     arrowDepth
 
     cdef cppclass GridCurrentMover_c(CurrentMover_c):
-        GridCurrentVariables fVar
+        UncertaintyParameters fUncertainParams
+        double fCurScale
         TimeGridVel_c    *timeGrid
         Boolean fIsOptimizedForStep
         Boolean fAllowVerticalExtrapolationOfCurrents
-        float    fMaxDepthForExtrapolation
         
         GridCurrentMover_c ()
         WorldPoint3D    GetMove(Seconds&,Seconds&,Seconds&,Seconds&, long, long, LERec *, LETYPE)
         OSErr 		    get_move(int n, unsigned long model_time, unsigned long step_len, WorldPoint3D* ref, WorldPoint3D* delta, short* LE_status, LEType spillType, long spillID)
         void 		    SetTimeGrid(TimeGridVel_c *newTimeGrid)
         OSErr           TextRead(char *path,char *topFilePath)
-        OSErr          ExportTopology(char *topFilePath)
+        OSErr           ExportTopology(char *topFilePath)
+        void 		    SetExtrapolationInTime(bool extrapolate)
+        bool 		    GetExtrapolationInTime()
+        void 		    SetTimeShift(long timeShift)
+        long 		    GetTimeShift()
+        
+cdef extern from "CurrentCycleMover_c.h":
+    
+    cdef cppclass CurrentCycleMover_c(GridCurrentMover_c):
+        OSSMTimeValue_c *timeDep
+        Boolean bTimeFileActive
+        short fPatternStartPoint
+        WorldPoint      refP
+        
+        CurrentCycleMover_c ()
+        WorldPoint3D    GetMove(Seconds&,Seconds&,Seconds&,Seconds&, long, long, LERec *, LETYPE)
+        #OSErr 		    get_move(int n, unsigned long model_time, unsigned long step_len, WorldPoint3D* ref, WorldPoint3D* delta, short* LE_status, LEType spillType, long spillID)
+        #void 		    SetTimeGrid(TimeGridVel_c *newTimeGrid)
+        #OSErr           TextRead(char *path,char *topFilePath)
+        #OSErr           ExportTopology(char *topFilePath)
+        void  			SetTimeDep(OSSMTimeValue_c *ossm)
+        void  			SetRefPosition (WorldPoint p)    
         
 cdef extern from "GridWindMover_c.h":
     
@@ -184,6 +236,10 @@ cdef extern from "GridWindMover_c.h":
         void 		    SetTimeGrid(TimeGridVel_c *newTimeGrid)
         OSErr           TextRead(char *path,char *topFilePath)
         OSErr          ExportTopology(char *topFilePath)
+        void 		    SetExtrapolationInTime(bool extrapolate)
+        bool 		    GetExtrapolationInTime()
+        void 		    SetTimeShift(long timeShift)
+        long 		    GetTimeShift()
         
 cdef extern from "GridMap_c.h":
     

@@ -18,7 +18,7 @@ import numpy.random as random
 
 from gnome.basic_types import oil_status
 
-from gnome.renderer import Renderer
+from gnome.outputters import Renderer
 from gnome.utilities.projections import GeoProjection
 
 from conftest import sample_sc_release
@@ -63,13 +63,39 @@ def test_file_delete():
         open(os.path.join(output_dir, fg_format % i), 'w'
              ).write('some junk')
 
-    r.prepare_for_model_run(model_start_time=datetime.now(),
-                            num_time_steps=10)
+    r.prepare_for_model_run(model_start_time=datetime.now())
 
     # there should only be a background image now.
 
     files = os.listdir(output_dir)
     assert files == [r.background_map_name]
+
+
+def test_rewind():
+    'test rewind calls base function and clear_output_dir'
+    r = Renderer(bna_sample, output_dir)
+    bg_name = r.background_map_name
+    fg_format = r.foreground_filename_format
+
+    # dump some files into output dir:
+
+    open(os.path.join(output_dir, bg_name), 'w').write('some junk')
+
+    for i in range(5):
+        open(os.path.join(output_dir, fg_format % i), 'w'
+             ).write('some junk')
+
+    now = datetime.now()
+    r.prepare_for_model_run(model_start_time=now)
+
+    assert r._model_start_time == now
+
+    r.rewind()
+    assert r._model_start_time is None  # check super is called correctly
+    # there should only be a background image now.
+
+    files = os.listdir(output_dir)
+    assert files == []
 
 
 def test_render_elements():
@@ -226,6 +252,14 @@ def test_set_viewport():
     r.viewport = ((-76, 40), (-73, 43))
     r.draw_background()
     r.save_background(os.path.join(output_dir, 'star_upper_left.png'))
+
+
+@pytest.mark.parametrize(("json_"), ['save', 'webapi'])
+def test_serialize_deserialize(json_):
+    r = Renderer(bna_sample, output_dir)
+    r2 = Renderer.new_from_dict(r.deserialize(r.serialize(json_)))
+    if json_ == 'save':
+        assert r == r2
 
 
 if __name__ == '__main__':

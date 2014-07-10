@@ -32,6 +32,11 @@ TimeGridVel::TimeGridVel (/*TMap *owner, char *name*/)
 	
 	//fFileScaleFactor = 1.;	// let user set a scale factor in addition to what is in the file
 	
+	fOffset = 0;
+	fFraction = 0;
+	fTimeAlpha = -1;
+	bIsCycleMover = false;
+	
 	memset(&fStartData,0,sizeof(fStartData));
 	fStartData.timeIndex = UNASSIGNEDINDEX; 
 	fStartData.dataHdl = 0; 
@@ -565,6 +570,7 @@ CalcStr:
 	
 	lengthU = sqrt(velocity.u * velocity.u + velocity.v * velocity.v);
 	lengthS = lengthU * fVar.fileScaleFactor; //factor from dialog box vs factor from file - this should be passed in 
+	if (lengthS > 1000000 || this->fVar.fileScaleFactor==0) return true;	// if bad data in file causes a crash
 	
 	StringWithoutTrailingZeros(uStr,lengthU,4);
 	StringWithoutTrailingZeros(sStr,lengthS,4);
@@ -1174,6 +1180,7 @@ Boolean TimeGridVelCurv::VelocityStrAtPoint(WorldPoint3D wp, char *diagnosticStr
 	//lengthS = this->fVar.curScale * lengthU;
 	//lengthS = this->fVar.curScale * fFileScaleFactor * lengthU;
 	lengthS = lengthU * fVar.fileScaleFactor;	// pass this in
+	if (lengthS > 1000000 || this->fVar.fileScaleFactor==0) return true;	// if bad data in file causes a crash
 	
 	StringWithoutTrailingZeros(uStr,lengthU,4);
 	StringWithoutTrailingZeros(sStr,lengthS,4);
@@ -1854,6 +1861,20 @@ Boolean TimeGridVelTri::VelocityStrAtPoint(WorldPoint3D wp, char *diagnosticStr,
 		endTime = (*fTimeHdl)[fEndData.timeIndex] + fTimeShift;
 		timeAlpha = (endTime - time)/(double)(endTime - startTime);
 		
+		if (bIsCycleMover)
+		{
+			if(fTimeAlpha==-1)
+			{
+				Seconds relTime, modelStartTime = model->GetStartTime();
+				if (modelStartTime==0)	// haven't called prepareformodelstep yet, so get the first (or could set it...)
+					relTime = (*fTimeHdl)[0];
+				else
+					relTime = time - modelStartTime;
+				timeAlpha = (endTime - relTime)/(double)(endTime - startTime);
+			}
+			else
+				timeAlpha = fTimeAlpha;
+		}
 		if (bVelocitiesOnTriangles)
 		{
 			pt1depthIndex1 = -1;
@@ -1933,6 +1954,7 @@ Boolean TimeGridVelTri::VelocityStrAtPoint(WorldPoint3D wp, char *diagnosticStr,
 	
 	lengthU = sqrt(velocity.u * velocity.u + velocity.v * velocity.v);
 	lengthS = lengthU * fVar.fileScaleFactor;
+	if (lengthS > 1000000 || this->fVar.fileScaleFactor==0) return true;	// if bad data in file causes a crash
 	
 	StringWithoutTrailingZeros(uStr,lengthU,4);
 	StringWithoutTrailingZeros(sStr,lengthS,4);
@@ -2022,6 +2044,20 @@ void TimeGridVelTri::Draw(Rect r, WorldRect view,double refScale,double arrowSca
 				{	//return false;
 					endTime = (*fTimeHdl)[fEndData.timeIndex] + fTimeShift;
 					timeAlpha = (endTime - time)/(double)(endTime - startTime);
+				}
+				if (bIsCycleMover)
+				{
+					if(fTimeAlpha==-1)
+					{
+						Seconds relTime, modelStartTime = model->GetStartTime();
+						if (modelStartTime==0)	// haven't called prepareformodelstep yet, so get the first (or could set it...)
+							relTime = (*fTimeHdl)[0];
+						else
+							relTime = time - modelStartTime;
+						timeAlpha = (endTime - relTime)/(double)(endTime - startTime);
+					}
+					else
+						timeAlpha = fTimeAlpha;
 				}
 				//endTime = (*fTimeHdl)[fEndData.timeIndex] + fTimeShift;
 				//timeAlpha = (endTime - time)/(double)(endTime - startTime);
@@ -2173,6 +2209,20 @@ void TimeGridVelTri::Draw(Rect r, WorldRect view,double refScale,double arrowSca
 				{	//return false;
 					endTime = (*fTimeHdl)[fEndData.timeIndex] + fTimeShift;
 					timeAlpha = (endTime - time)/(double)(endTime - startTime);
+				}
+				if (bIsCycleMover)
+				{
+					if(fTimeAlpha==-1)
+					{
+						Seconds relTime, modelStartTime = model->GetStartTime();
+						if (modelStartTime==0)	// haven't called prepareformodelstep yet, so get the first (or could set it...)
+							relTime = (*fTimeHdl)[0];
+						else
+							relTime = time - modelStartTime;
+						timeAlpha = (endTime - relTime)/(double)(endTime - startTime);
+					}
+					else
+						timeAlpha = fTimeAlpha;
 				}
 				//endTime = (*fTimeHdl)[fEndData.timeIndex] + fTimeShift;
 				//timeAlpha = (endTime - time)/(double)(endTime - startTime);
@@ -2621,6 +2671,7 @@ Boolean TimeGridCurRect::VelocityStrAtPoint(WorldPoint3D wp, char *diagnosticStr
 	lengthU = sqrt(velocity.u * velocity.u + velocity.v * velocity.v);
 	//lengthS = this->fVar.curScale * lengthU;
 	lengthS = lengthU;
+	if (lengthS > 1000000) return true;	// if bad data in file causes a crash
 	
 	StringWithoutTrailingZeros(uStr,lengthU,4);
 	StringWithoutTrailingZeros(sStr,lengthS,4);
@@ -2725,8 +2776,8 @@ void TimeGridCurRect::Draw(Rect r, WorldRect view,double refScale,double arrowSc
 			
 			if (bDrawArrows && (velocity.u != 0 || velocity.v != 0))
 			{
-				inchesX = (velocity.u * refScale) / arrowScale;
-				inchesY = (velocity.v * refScale) / arrowScale;
+				inchesX = (velocity.u * refScale * fVar.fileScaleFactor) / arrowScale;
+				inchesY = (velocity.v * refScale * fVar.fileScaleFactor) / arrowScale;
 				pixX = inchesX * PixelsPerInchCurrent();
 				pixY = inchesY * PixelsPerInchCurrent();
 				p2.h = p.h + pixX;
@@ -2741,29 +2792,8 @@ void TimeGridCurRect::Draw(Rect r, WorldRect view,double refScale,double arrowSc
 }
 TimeGridCurTri::TimeGridCurTri () : TimeGridCurRect()
 {
-	memset(&fVar2,0,sizeof(fVar2));
-	fVar2.arrowScale = 5;
-	fVar2.arrowDepth = 0;
-	fVar2.alongCurUncertainty = .5;
-	fVar2.crossCurUncertainty = .25;
-	//fVar.uncertMinimumInMPS = .05;
-	fVar2.uncertMinimumInMPS = 0.0;
-	fVar2.curScale = 1.0;
-	fVar2.startTimeInHrs = 0.0;
-	fVar2.durationInHrs = 24.0;
-	fVar2.numLandPts = 0; // default that boundary velocities are given
-	fVar2.maxNumDepths = 1; // 2D default
-	fVar2.gridType = TWO_D; // 2D default
-	fVar2.bLayerThickness = 0.; // FREESLIP default
-	//
-	// Override TCurrentMover defaults
-	/*fDownCurUncertainty = -fVar2.alongCurUncertainty; 
-	fUpCurUncertainty = fVar2.alongCurUncertainty; 	
-	fRightCurUncertainty = fVar2.crossCurUncertainty;  
-	fLeftCurUncertainty = -fVar2.crossCurUncertainty; 
-	fDuration=fVar2.durationInHrs*3600.; //24 hrs as seconds 
-	fUncertainStartTime = (long) (fVar2.startTimeInHrs*3600.);*/
-	//
+	fNumLandPts = 0; // default that boundary velocities are given
+	fBoundaryLayerThickness = 0.; // FREESLIP default
 	
 	fDepthsH = 0;
 	fDepthDataInfo = 0;
@@ -3026,8 +3056,8 @@ void TimeGridCurTri::Draw(Rect r, WorldRect view,double refScale,double arrowSca
 				}
 				if ((velocity.u != 0 || velocity.v != 0))
 				{
-					float inchesX = (velocity.u * refScale) / arrowScale;
-					float inchesY = (velocity.v * refScale) / arrowScale;
+					float inchesX = (velocity.u * refScale * fVar.fileScaleFactor) / arrowScale;
+					float inchesY = (velocity.v * refScale * fVar.fileScaleFactor) / arrowScale;
 					short pixX = inchesX * PixelsPerInchCurrent();
 					short pixY = inchesY * PixelsPerInchCurrent();
 					p2.h = p.h + pixX;
@@ -3118,6 +3148,7 @@ Boolean TimeGridCurTri::VelocityStrAtPoint(WorldPoint3D wp, char *diagnosticStr,
 	lengthU = sqrt(velocity.u * velocity.u + velocity.v * velocity.v);
 	//lengthS = this->fVar.curScale * lengthU;
 	lengthS = this->fVar.fileScaleFactor * lengthU;
+	if (lengthS > 1000000 || this->fVar.fileScaleFactor==0) return true;	// if bad data in file causes a crash
 	
 	StringWithoutTrailingZeros(uStr,lengthU,4);
 	StringWithoutTrailingZeros(sStr,lengthS,4);

@@ -64,15 +64,15 @@ def test_properties_read_from_file():
 
             assert val == data[s_idx + len(item):e_idx]
 
-    assert shio.daylight_savings_off
+    assert not shio.daylight_savings_off
     assert shio.filename == shio_file
 
 
 def test_daylight_savings_off():
     shio = CyShioTime(shio_file)
-    assert shio.daylight_savings_off
-    shio.daylight_savings_off = False
     assert not shio.daylight_savings_off
+    shio.daylight_savings_off = True
+    assert shio.daylight_savings_off
 
 
 def test_scale_factor():
@@ -85,11 +85,61 @@ def test_scale_factor():
 def test_yeardata():
     shio = CyShioTime(shio_file)
     assert shio.yeardata == ''
-    yd = os.path.join(os.path.dirname(gnome.__file__), 'data',
-                      'yeardata')
+
+    yd = os.path.join(os.path.dirname(gnome.__file__), 'data', 'yeardata')
     shio.yeardata = yd
+
     # shio puts a trailing slash at the end that is platform dependent
     # so compare the names without the platform dependent trailing slash
     assert shio.yeardata[:-1] == yd
 
 
+def test_eq():
+    shio = CyShioTime(shio_file)
+
+    other_shio = CyShioTime(shio_file)
+    assert shio == other_shio
+
+    other_shio = CyShioTime(shio_file)
+    other_shio.daylight_savings_off = True
+    assert shio != other_shio
+
+    other_shio = CyShioTime(shio_file)
+    other_shio.scale_factor = 2
+    assert shio != other_shio
+
+    other_shio = CyShioTime(shio_file)
+    yd = os.path.join(os.path.dirname(gnome.__file__), 'data', 'yeardata')
+    other_shio.yeardata = yd
+    assert shio != other_shio
+
+    # TODO: need to test for inequality if read-only attributes are
+    # different.  These include:
+    # - station
+    # - station_type
+    # - station_location
+    # For this, we probably need to open up sample files that have
+    # different properties.  And we need to make them available via
+    # get_datafile()
+
+
+def test_eval_repr():
+    print "in test_eval_repr: shio_file is:", shio_file
+    shio = CyShioTime(shio_file)
+
+    print "the repr is:", repr(shio)
+    other_shio = eval(repr(shio))
+    assert shio == other_shio
+
+    yd = os.path.join(os.path.dirname(gnome.__file__), 'data', 'yeardata')
+    shio.yeardata = yd
+    other_shio = eval(repr(shio))
+    assert shio == other_shio
+
+    shio.daylight_savings_off = False
+    other_shio = eval(repr(shio))
+    assert shio == other_shio
+
+    shio.scale_factor = 2
+    other_shio = eval(repr(shio))
+    assert shio == other_shio

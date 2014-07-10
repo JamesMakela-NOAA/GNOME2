@@ -9,6 +9,7 @@ using std::map;
 using std::string;
 
 #include "TypeDefs.h"
+#include "GuiTypeDefs.h"
 #include "CMyList.h"
 #include "RectUtils.h"
 #include "ObjectUtils.h"
@@ -35,8 +36,8 @@ enum { // moved TModel defines to TModel.cpp // JLM
 	
 	// ptcur map overrides standard map items
 	// I_PMAPNAME = 0, I_PDRAWLANDWATERBITMAP, I_PMOVERS, I_PREFLOATHALFLIFE,
-	I_PMAPNAME = 0, I_PDRAWLANDWATERBITMAP, I_PDRAWRESTRICTEDBITMAP, I_PMOVERS, I_PDRAWCONTOURS, I_PSETCONTOURS, I_PCONCTABLE, I_PSHOWLEGEND, I_PSHOWSURFACELES,
-	I_PWATERDENSITY, I_PMIXEDLAYERDEPTH, I_PBREAKINGWAVEHT, I_PDIAGNOSTICSTRING, I_PDROPLETINFO, I_PREFLOATHALFLIFE, I_PDRAWCONTOURSFORMAP,
+	I_PMAPNAME = 0, I_PDRAWLANDWATERBITMAP, I_PMOVERS, I_PDRAWCONTOURS, I_PSETCONTOURS, I_PCONCTABLE, I_PSHOWLEGEND, I_PSHOWSURFACELES,
+	I_PWATERDENSITY, I_PMIXEDLAYERDEPTH, I_PBREAKINGWAVEHT, I_PDIAGNOSTICSTRING, I_PDROPLETINFO, I_PREFLOATHALFLIFE, I_PDRAWCONTOURSFORMAP, I_PDRAWRESTRICTEDBITMAP, 
 	
 	// ptcur map overrides standard map items
 	// I_PMAPNAME = 0, I_PDRAWLANDWATERBITMAP, I_PMOVERS, I_PREFLOATHALFLIFE,
@@ -81,6 +82,20 @@ enum { // moved TModel defines to TModel.cpp // JLM
 	I_WINDTIMEENTRIES, I_WINDBARB,
 	
 	I_WEATHERNAME = 0, I_WEATHERACTIVE };
+
+enum {
+	I_PTCURNAME = 0 ,
+	I_PTCURACTIVE, 
+	I_PTCURGRID, 
+	I_PTCURARROWS,
+	I_PTCURSCALE,
+	I_PTCURUNCERTAINTY,
+	I_PTCURSTARTTIME,
+	I_PTCURDURATION, 
+	I_PTCURALONGCUR,
+	I_PTCURCROSSCUR,
+	I_PTCURMINCURRENT
+};
 
 ///////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////
@@ -147,6 +162,8 @@ class TWeatherer : virtual public Weatherer_c, public TClassID
 		virtual OSErr		InitWeatherer () { return noErr; }
 		virtual void		Dispose () { return; }
 
+		virtual ClassID 	GetClassID () { return TYPE_WEATHERER; }
+	
 		// I/O methods
 		virtual OSErr 		Read  (BFPB *bfpb);  			// read from current position
 		virtual OSErr 		Write (BFPB *bfpb); 			// write to  current position
@@ -167,6 +184,9 @@ class TOSSMWeatherer : virtual public OSSMWeatherer_c, public TWeatherer
 		virtual				~TOSSMWeatherer ();
 		virtual OSErr		InitWeatherer ();
 		virtual void		Dispose ();
+	
+		virtual ClassID		GetClassID () { return TYPE_OSSMWEATHERER; }
+	
 		// I/O methods
 		virtual OSErr 		Read (BFPB *bfpb); 	// read from current position
 		virtual OSErr 		Write (BFPB *bfpb); // write to  current position
@@ -611,7 +631,7 @@ Boolean IsBlackPixel(WorldPoint p,WorldRect mapBounds,BitMap bm);
 #else
 Boolean IsBlackPixel(WorldPoint p,WorldRect mapBounds,HDIB bm);
 #endif
-void 	LandBitMapWidthHeight(WorldRect wRect, long *width, long* height);
+OSErr 	LandBitMapWidthHeight(WorldRect wRect, long *width, long* height);
 OSErr	AddMapsDialog ();
 OSErr	AddMapsDialog2 ();
 
@@ -769,6 +789,11 @@ void TellPlayersAboutNewDirt(void);
 
 #include "GridCurrentMover_c.h"
 #include "GridCurrentMover.h"
+
+//++ CurrentCycleMover
+
+#include "CurrentCycleMover_c.h"
+#include "CurrentCycleMover.h"
 
 //++ GridWindMover
 

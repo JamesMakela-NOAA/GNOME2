@@ -229,6 +229,7 @@ Boolean NetCDFMoverCurv_c::VelocityStrAtPoint(WorldPoint3D wp, char *diagnosticS
 	//lengthS = this->fVar.curScale * lengthU;
 	//lengthS = this->fVar.curScale * fFileScaleFactor * lengthU;
 	lengthS = this->fVar.curScale * lengthU;
+	if (lengthS > 1000000 || this->fVar.curScale==0) return true;	// if bad data in file causes a crash
 	
 	StringWithoutTrailingZeros(uStr,lengthU,4);
 	StringWithoutTrailingZeros(sStr,lengthS,4);
@@ -505,11 +506,17 @@ float NetCDFMoverCurv_c::GetTotalDepth(WorldPoint refPoint,long ptIndex)
 		FLOATH depthsHdl = 0;
 		
 		interpolationVal = ((TTriGridVel*)fGrid)->GetInterpolationValues(refPoint);
-		depthsHdl = ((TTriGridVel3D*)fGrid)->GetDepths();
+		if (fDepthsH) 
+		{
+			totalDepth = INDEXH(fDepthsH,ptIndex); 
+			return totalDepth;
+		}
+		if (fGrid->GetClassID()==TYPE_TRIGRIDVEL3D)
+			//depthsHdl = ((TTriGridVel3D*)fGrid)->GetDepths();
+			depthsHdl = dynamic_cast<TriGridVel3D_c *>(fGrid) -> GetDepths();
 		if (!depthsHdl || interpolationVal.ptIndex1<0 ) 
 			//return -1;	// some error alert, no depth info to check
-		{if (fDepthsH) totalDepth = INDEXH(fDepthsH,ptIndex); 
-			return totalDepth;}
+			return totalDepth;	// assume 2D
 		//if (fDepthsH)
 		{
 			depth1 = (*depthsHdl)[interpolationVal.ptIndex1];

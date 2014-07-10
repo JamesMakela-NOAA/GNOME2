@@ -13,6 +13,7 @@
 #include "GridCurMover.h"
 #include "GridWndMover.h"
 #include "TideCurCycleMover.h"
+#include "CurrentCycleMover.h"
 #include "EditWindsDialog.h"
 #include "NetCDFMoverCurv.h"
 #include "NetCDFWindMover.h"
@@ -169,6 +170,7 @@ OSErr TMap::Read(BFPB *bfpb)
 			case TYPE_COMPOUNDMOVER: mover = new TCompoundMover(dynamic_cast<TMap *>(this), ""); break;
 			case TYPE_ADCPMOVER: mover = new ADCPMover(dynamic_cast<TMap *>(this), ""); break;
 			case TYPE_GRIDCURRENTMOVER: mover = new GridCurrentMover(dynamic_cast<TMap *>(this), ""); break;
+			case TYPE_CURRENTCYCLEMOVER: mover = new CurrentCycleMover(dynamic_cast<TMap *>(this), ""); break;
 			case TYPE_GRIDWINDMOVER: mover = new GridWindMover(dynamic_cast<TMap *>(this), ""); break;
 			default: printError("Unrecognized mover type in TMap::Read()."); return -1;
 		}
@@ -253,7 +255,7 @@ OSErr TMap::CheckAndPassOnMessage(TModelMessage *message)
 						if(FileExists(0,0,path))
 						{
 							short unitsIfKnownInAdvance = kUndefined;
-							char str2[64];
+							char str2[64], outPath[256];
 							message->GetParameterString("speedUnits",str2,64);
 							if(str2[0]) 
 							{	
@@ -262,6 +264,11 @@ OSErr TMap::CheckAndPassOnMessage(TModelMessage *message)
 									printError("bad speedUnits parameter");
 							}
 							
+#if TARGET_API_MAC_CARBON
+							// ReadTimeValues expects unix style paths
+							if (!err) err = ConvertTraditionalPathToUnixPath((const char *) path, outPath, kMaxNameLen) ;
+							if (!err) strcpy(path,outPath);
+#endif
 							err = timeFile -> ReadTimeValues (path, M19MAGNITUDEDIRECTION,unitsIfKnownInAdvance);
 						}	
 						else 
@@ -871,6 +878,9 @@ OSErr TMap::AddItem(ListItem item)
 							case TYPE_ADCPMOVER:
 								err = ADCPSettingsDialog (dynamic_cast<ADCPMover*>(newMover), dynamic_cast<TMap *>(this), &timeFileChanged);
 								break;
+							case TYPE_CURRENTCYCLEMOVER:
+								err = CurrentCycleSettingsDialog (dynamic_cast<CurrentCycleMover *>(newMover), dynamic_cast<TMap *>(this), &timeFileChanged);
+								break;
 							case TYPE_GRIDCURRENTMOVER:
 							case TYPE_NETCDFMOVER:
 							case TYPE_NETCDFMOVERCURV:
@@ -1019,6 +1029,8 @@ OSErr TMap::AddItem(ListItem item)
 #if TARGET_API_MAC_CARBON
 							if (!err) err = ConvertTraditionalPathToUnixPath((const char *) path, outPath, kMaxNameLen) ;
 							if (!err) strcpy(path,outPath);
+							if (!err && bTopFile) err = ConvertTraditionalPathToUnixPath((const char *) topFilePath, outPath, kMaxNameLen) ;
+							if (!err && bTopFile) strcpy(topFilePath,outPath);
 #endif
 							//if (!err) err = timeGrid->TextRead(path,"");
 							if (!err) err = timeGrid->TextRead(path,topFilePath);
@@ -1070,8 +1082,9 @@ OSErr TMap::AddItem(ListItem item)
 							// it has already been added to the map's list,we need to get rid of it
 							this -> DropMover(newMover); 
 							newMover->Dispose(); delete newMover;  newMover = 0;
+							return err;
 						}			
-						return err;
+						//return err;
 					}
 					else if (IsGridWindFile(path,&selectedUnits))	// code goes here, constant wind case
 					{
@@ -1087,14 +1100,14 @@ OSErr TMap::AddItem(ListItem item)
 								return 0;
 							}
 							newMover = newGridWindMover;
-							timeGrid -> fUserUnits = selectedUnits;
+							(dynamic_cast<TimeGridCurRect *>(timeGrid)) -> fUserUnits = selectedUnits;
 							
 							err = newGridWindMover->InitMover(timeGrid);
 							//if(err) goto Error;
-//#if TARGET_API_MAC_CARBON
-//							if (!err) err = ConvertTraditionalPathToUnixPath((const char *) path, outPath, kMaxNameLen) ;
-//							if (!err) strcpy(path,outPath);
-//#endif
+#if TARGET_API_MAC_CARBON
+							if (!err) err = ConvertTraditionalPathToUnixPath((const char *) path, outPath, kMaxNameLen) ;
+							if (!err) strcpy(path,outPath);
+#endif
 							//if (!err) err = timeGrid->TextRead(path,"");
 							if (!err) err = timeGrid->TextRead(path,topFilePath);
 							//if(err) goto Error;
@@ -1135,6 +1148,11 @@ OSErr TMap::AddItem(ListItem item)
 						if (!timeFile)
 						{ TechError("TMap::AddItem()", "new TOSSMTimeValue()", 0); delete newMover; return -1; }
 						
+#if TARGET_API_MAC_CARBON
+						// ReadTimeValues expects unix style paths
+						if (!err) err = ConvertTraditionalPathToUnixPath((const char *) path, outPath, kMaxNameLen) ;
+						if (!err) strcpy(path,outPath);
+#endif
 						if (err = timeFile -> ReadTimeValues (path, M19MAGNITUDEDIRECTION, kUndefined)) // ask for units
 						{ delete timeFile; delete newMover; return -1; }
 						newMover->timeDep = timeFile;

@@ -257,6 +257,12 @@ TimeGridVel_c::TimeGridVel_c ()
 	fFillValue = -1e+34;
 	//fIsNavy = false;	
 	
+	fOffset = 0;
+	fFraction = 0;
+	fTimeAlpha = -1;
+	bIsCycleMover = false;
+	fModelStartTime = 0;
+	
 	memset(&fStartData,0,sizeof(fStartData));
 	fStartData.timeIndex = UNASSIGNEDINDEX; 
 	fStartData.dataHdl = 0; 
@@ -268,6 +274,9 @@ TimeGridVel_c::TimeGridVel_c ()
 	
 	fAllowExtrapolationInTime = false;
 
+	fAllowVerticalExtrapolationOfCurrents = false;
+	fMaxDepthForExtrapolation = 0.;	// assume 2D is just surface
+	
 	fNumCols = fNumRows = 0;
 }
 
@@ -334,6 +343,63 @@ Boolean TimeGridVel_c::CheckInterval(long &timeDataInterval, const Seconds& mode
 			return false;
 	}
 	
+	if (bIsCycleMover)
+	{
+		// need some sort of check for if time grid exists and is active
+		//short ebbFloodType;
+		//float fraction;
+		long numTimes = GetNumTimesInFile(), /*offset,*/ index1, index2;
+		float  numSegmentsPerFloodEbb = numTimes/4.;
+		if (fFraction==0 && fOffset==0)
+		{
+			if (fModelStartTime==0)	// haven't called prepareformodelstep yet, so get the first (or could set it...)
+				time = (*fTimeHdl)[0];
+			else
+				time = time - fModelStartTime;
+			//time = time - model->GetStartTime();
+			fTimeAlpha = -1;
+			if(fStartData.timeIndex!=UNASSIGNEDINDEX && fEndData.timeIndex!=UNASSIGNEDINDEX)
+			{
+				if (time>=(*fTimeHdl)[fStartData.timeIndex] && time<=(*fTimeHdl)[fEndData.timeIndex])
+				{	// we already have the right interval loaded
+					timeDataInterval = fEndData.timeIndex;
+					return true;
+				}
+			}
+			
+			for (i=0;i<numTimes;i++) 
+			{	// find the time interval
+				if (time>=(*fTimeHdl)[i] && time<=(*fTimeHdl)[i+1])
+				{
+					timeDataInterval = i+1; // first interval is between 0 and 1, and so on
+					return false;
+				}
+			}	
+			// don't allow time before first or after last
+			if (time<(*fTimeHdl)[0]) 
+				timeDataInterval = 0;
+			if (time>(*fTimeHdl)[numTimes-1]) 
+				timeDataInterval = numTimes;
+			return false;	// need to decide what to do here
+			//timeDataInterval = 1;
+			//return false;
+		}
+		index1 = floor(numSegmentsPerFloodEbb * (fFraction + fOffset));	// round, floor?
+		index2 = ceil(numSegmentsPerFloodEbb * (fFraction + fOffset));	// round, floor?
+		timeDataInterval = index2;	// first interval is between 0 and 1, and so on
+		if (fFraction==0) timeDataInterval++;
+		// do we need this?
+		fTimeAlpha = timeDataInterval-numSegmentsPerFloodEbb * (fFraction + fOffset);
+		// check if index2==numTimes, then need to cycle back to zero
+		// check if index1==index2, then only need one file loaded
+		if (index2==12) index2=0;	// code goes here - this is assuming always have 12 patterns - should be numTimes?
+		if(fStartData.timeIndex==index1 && fEndData.timeIndex==index2)
+		{
+			return true;			
+		}
+		return false;
+	}
+
 	if (fStartData.timeIndex != UNASSIGNEDINDEX &&
 		fEndData.timeIndex != UNASSIGNEDINDEX)
 	{
@@ -1264,7 +1330,9 @@ OSErr TimeGridVel_c::SetInterval(char *errmsg, const Seconds& model_time)
 			}
 		}
 		else {
-			if (fAllowExtrapolationInTime && timeDataInterval == numTimesInFile) {
+			if(fTimeAlpha>=0 && timeDataInterval == numTimesInFile)
+				indexOfEnd = 0;	// start over
+			else if (fAllowExtrapolationInTime && timeDataInterval == numTimesInFile) {
 				fStartData.timeIndex = numTimesInFile-1;//check if time > last model time in all files
 				fEndData.timeIndex = UNASSIGNEDINDEX;//check if time > last model time in all files
 			}
@@ -1519,14 +1587,18 @@ VelocityRec TimeGridVelRect_c::GetScaledPatValue(const Seconds& model_time, Worl
 	
 	if (refPoint.z>0 && fVar.gridType==TWO_D)
 	{
-		if (fAllowVerticalExtrapolationOfCurrents && fMaxDepthForExtrapolation >= refPoint.z)
+		if (!fAllowVerticalExtrapolationOfCurrents)
 		{
-			// fall through to get the velocity
-		}
-		else
-		{	// may allow 3D currents later
 			return scaledPatVelocity;
 		}
+#ifndef pyGNOME
+		if (fAllowVerticalExtrapolationOfCurrents && fMaxDepthForExtrapolation < refPoint.z)
+		{
+			return scaledPatVelocity;
+		}
+#endif
+		// else fall through to get the velocity
+		// will also want a log profile option
 	}
 	
 	GetDepthIndices(0,refPoint.z,&depthIndex1,&depthIndex2);
@@ -1880,10 +1952,10 @@ TimeGridVelRect_c::TimeGridVelRect_c () : TimeGridVel_c()
 	
 	fNumDepthLevels = 1;	// default surface current only
 	
-	fAllowVerticalExtrapolationOfCurrents = false;
-	fMaxDepthForExtrapolation = 0.;	// assume 2D is just surface
+	//fAllowVerticalExtrapolationOfCurrents = false;
+	//fMaxDepthForExtrapolation = 0.;	// assume 2D is just surface
 	
-	fFileScaleFactor = 1.0;
+	//fFileScaleFactor = 1.0;
 
 }
 
@@ -5408,6 +5480,19 @@ VelocityRec TimeGridVelTri_c::GetScaledPatValue(const Seconds& model_time, World
 		endTime = (*fTimeHdl)[fEndData.timeIndex] + fTimeShift;
 		timeAlpha = (endTime - model_time)/(double)(endTime - startTime);
 		
+		// Calculate the time weight factor
+		if (fTimeAlpha==-1)
+		{
+			//Seconds relTime = time - model->GetStartTime();
+			Seconds relTime = model_time - fModelStartTime;
+			startTime = (*fTimeHdl)[fStartData.timeIndex];
+			endTime = (*fTimeHdl)[fEndData.timeIndex];
+			//timeAlpha = (endTime - model_time)/(double)(endTime - startTime);
+			timeAlpha = (endTime - relTime)/(double)(endTime - startTime);
+		}
+		else
+			timeAlpha = fTimeAlpha;
+
 		// Calculate the interpolated velocity at the point
 		if (interpolationVal.ptIndex1 >= 0) 
 		{
@@ -5564,6 +5649,19 @@ VelocityRec TimeGridVelTri_c::GetScaledPatValue3D(const Seconds& model_time, Int
 		endTime = (*fTimeHdl)[fEndData.timeIndex];
 		timeAlpha = (endTime - model_time)/(double)(endTime - startTime);
 		
+		// Calculate the time weight factor
+		if (fTimeAlpha==-1)
+		{
+			//Seconds relTime = time - model->GetStartTime();
+			Seconds relTime = model_time - fModelStartTime;
+			startTime = (*fTimeHdl)[fStartData.timeIndex];
+			endTime = (*fTimeHdl)[fEndData.timeIndex];
+			//timeAlpha = (endTime - model_time)/(double)(endTime - startTime);
+			timeAlpha = (endTime - relTime)/(double)(endTime - startTime);
+		}
+		else
+			timeAlpha = fTimeAlpha;
+
 		if (pt1depthIndex1!=-1)
 		{
 			if (pt1depthIndex2!=-1) 
@@ -5647,7 +5745,7 @@ OSErr TimeGridVelTri_c::TextRead(const char *path, const char *topFilePath)
 	long *bndry_indices = 0, *bndry_nums = 0, *bndry_type = 0, *top_verts = 0, *top_neighbors = 0;
 	double timeConversion = 1., scale_factor = 1.;
 	float timeVal;
-	Seconds startTime, startTime2;
+	Seconds startTime, startTime2=0;
 
 	size_t nodeLength, nbndLength, neleLength, recs, t_len, sigmaLength = 0;
 	static size_t latIndex = 0, lonIndex = 0, timeIndex, ptIndex = 0;
@@ -5699,7 +5797,7 @@ OSErr TimeGridVelTri_c::TextRead(const char *path, const char *topFilePath)
 	}
 	else {
 		DateTimeRec time;
-		char unitStr[24], junk[10];
+		char unitStr[24], junk[10], junk2[10], junk3[10];
 
 		timeUnits = new char[t_len + 1];
 
@@ -5713,24 +5811,36 @@ OSErr TimeGridVelTri_c::TextRead(const char *path, const char *topFilePath)
 		StringSubstitute(timeUnits, ':', ' ');
 		StringSubstitute(timeUnits, '-', ' ');
 		
-		numScanned = sscanf(timeUnits, "%s %s %hd %hd %hd %hd %hd %hd",
-							unitStr, junk, &time.year, &time.month, &time.day,
-							&time.hour, &time.minute, &time.second);
-		if (numScanned == 5) {
-			time.hour = 0;
-			time.minute = 0;
-			time.second = 0;
+		if (bIsCycleMover)
+		{
+			numScanned=sscanf(timeUnits, "%s %s %s %s",
+							  unitStr, junk, &junk2, &junk3) ;
+			if (numScanned<4) // really only care about 1	
+			{ err = -1; TechError("TimeGridVelTri_c::TextRead()", "sscanf() == 4", 0); goto done; }
 		}
-		else if (numScanned == 7) // has two extra time entries ??
-			time.second = 0;
-		else if (numScanned < 8) {
-			// has two extra time entries ??
-			err = -1;
-			TechError("TimeGridVelTri_c::TextRead()", "sscanf() == 8", 0);
-			goto done;
-		}
+		else 
+		{
+
+			numScanned = sscanf(timeUnits, "%s %s %hd %hd %hd %hd %hd %hd",
+								unitStr, junk, &time.year, &time.month, &time.day,
+								&time.hour, &time.minute, &time.second);
+			if (numScanned == 5) {
+				time.hour = 0;
+				time.minute = 0;
+				time.second = 0;
+			}
+			else if (numScanned == 7) // has two extra time entries ??
+				time.second = 0;
+			else if (numScanned < 8) {
+				// has two extra time entries ??
+
+				err = -1;
+				TechError("TimeGridVelTri_c::TextRead()", "sscanf() == 8", 0);
+				goto done;
+			}
 
 		DateToSeconds(&time, &startTime2);	// code goes here, which start Time to use ??
+		}
 		if (!strcmpnocase(unitStr, "HOURS") || !strcmpnocase(unitStr, "HOUR"))
 			timeConversion = 3600.;
 		else if (!strcmpnocase(unitStr, "MINUTES") || !strcmpnocase(unitStr, "MINUTE"))
@@ -6411,6 +6521,10 @@ OSErr TimeGridVelTri_c::ReadTimeData(long index,VelocityFH *velocityH, char* err
 				curr_uvals[j*numVelsAtDepthLevel+i]=0.;
 			if (curr_vvals[j*numVelsAtDepthLevel+i]==fill_value)
 				curr_vvals[j*numVelsAtDepthLevel+i]=0.;
+			if (curr_uvals[j*numVelsAtDepthLevel+i]==dry_value)
+				curr_uvals[j*numVelsAtDepthLevel+i]=0.;
+			if (curr_vvals[j*numVelsAtDepthLevel+i]==dry_value)
+				curr_vvals[j*numVelsAtDepthLevel+i]=0.;
 			//if (fVar.gridType==MULTILAYER /*sigmaReversed*/)
 			/*{
 			 INDEXH(velH,(numDepths-j-1)*fNumNodes+i).u = curr_uvals[j*fNumNodes+i];	// need units
@@ -6509,8 +6623,11 @@ OSErr TimeGridVelTri_c::ReorderPoints2(long *bndry_indices, long *bndry_nums, lo
 	if (numVerdatPts!=nv) 
 	{
 		printNote("Not all vertex points were used");
+		// it seems this should be an error...
+		err = -1;
+		goto done;
 		// shrink handle
-		_SetHandleSize((Handle)verdatPtsH,numVerdatPts*sizeof(long));
+		//_SetHandleSize((Handle)verdatPtsH,numVerdatPts*sizeof(long));
 	}
 	
 	numVerdatPts = nv;	//for now, may reorder later
@@ -6789,8 +6906,11 @@ OSErr TimeGridVelTri_c::ReorderPoints(long *bndry_indices, long *bndry_nums, lon
 	if (numVerdatPts!=nv) 
 	{
 		printNote("Not all vertex points were used");
+		// it seems this should be an error...
+		err = -1;
+		goto done;
 		// shrink handle
-		_SetHandleSize((Handle)verdatPtsH,numVerdatPts*sizeof(long));
+		//_SetHandleSize((Handle)verdatPtsH,numVerdatPts*sizeof(long));
 	}
 	pts = (LongPointHdl)_NewHandle(sizeof(LongPoint)*(numVerdatPts));
 	if(pts == nil)
@@ -7505,7 +7625,8 @@ VelocityRec TimeGridCurRect_c::GetScaledPatValue(const Seconds& model_time, Worl
 	index = GetVelocityIndex(refPoint.p); 
 	
 	// Check for constant current 
-	if(GetNumTimesInFile()==1 && !(GetNumFiles()>1))
+	if((GetNumTimesInFile()==1 && !(GetNumFiles()>1)) || (fEndData.timeIndex == UNASSIGNEDINDEX && model_time > ((*fTimeHdl)[fStartData.timeIndex] + fTimeShift) && fAllowExtrapolationInTime) || (fEndData.timeIndex == UNASSIGNEDINDEX && model_time < ((*fTimeHdl)[fStartData.timeIndex] + fTimeShift) && fAllowExtrapolationInTime))
+	//if(GetNumTimesInFile()==1 && !(GetNumFiles()>1))
 	{
 		// Calculate the interpolated velocity at the point
 		if (index >= 0) 
@@ -8392,42 +8513,9 @@ done:
 
 TimeGridCurTri_c::TimeGridCurTri_c () : TimeGridCurRect_c()
 {
-	memset(&fVar2,0,sizeof(fVar2));
-	fVar2.arrowScale = 5;
-	fVar2.arrowDepth = 0;
-	fVar2.alongCurUncertainty = .5;
-	fVar2.crossCurUncertainty = .25;
-	//fVar.uncertMinimumInMPS = .05;
-	fVar2.uncertMinimumInMPS = 0.0;
-	fVar2.curScale = 1.0;
-	fVar2.startTimeInHrs = 0.0;
-	fVar2.durationInHrs = 24.0;
-	fVar2.numLandPts = 0; // default that boundary velocities are given
-	fVar2.maxNumDepths = 1; // 2D default
-	fVar2.gridType = TWO_D; // 2D default
-	fVar2.bLayerThickness = 0.; // FREESLIP default
+	fNumLandPts = 0; // default that boundary velocities are given
+	fBoundaryLayerThickness = 0.; // FREESLIP default
 	//
-	// Override TCurrentMover defaults
-	/*fDownCurUncertainty = -fVar2.alongCurUncertainty; 
-	fUpCurUncertainty = fVar2.alongCurUncertainty; 	
-	fRightCurUncertainty = fVar2.crossCurUncertainty;  
-	fLeftCurUncertainty = -fVar2.crossCurUncertainty; 
-	fDuration=fVar2.durationInHrs*3600.; //24 hrs as seconds 
-	fUncertainStartTime = (long) (fVa2r.startTimeInHrs*3600.);*/
-	//
-/*	fGrid = 0;
-	fTimeDataHdl = 0;
-	fIsOptimizedForStep = false;
-	fOverLap = false;		// for multiple files case
-	fOverLapStartTime = 0;
-	
-	memset(&fStartData,0,sizeof(fStartData));
-	fStartData.timeIndex = UNASSIGNEDINDEX; 
-	fStartData.dataHdl = 0; 
-	memset(&fEndData,0,sizeof(fEndData));
-	fEndData.timeIndex = UNASSIGNEDINDEX;
-	fEndData.dataHdl = 0;
-	*/
 	fDepthsH = 0;
 	fDepthDataInfo = 0;
 	//fInputFilesHdl = 0;	// for multiple files case
@@ -8560,7 +8648,8 @@ VelocityRec TimeGridCurTri_c::GetScaledPatValue(const Seconds& model_time, World
 	}						
 	
 	// Check for constant current 
-	if(GetNumTimesInFile()==1 && !(GetNumFiles()>1))
+	if((GetNumTimesInFile()==1 && !(GetNumFiles()>1)) || (fEndData.timeIndex == UNASSIGNEDINDEX && model_time > ((*fTimeHdl)[fStartData.timeIndex] + fTimeShift) && fAllowExtrapolationInTime) || (fEndData.timeIndex == UNASSIGNEDINDEX && model_time < ((*fTimeHdl)[fStartData.timeIndex] + fTimeShift) && fAllowExtrapolationInTime))
+	//if(GetNumTimesInFile()==1 && !(GetNumFiles()>1))
 	{
 		// Calculate the interpolated velocity at the point
 		if (interpolationVal.ptIndex1 >= 0) 
@@ -8635,7 +8724,8 @@ VelocityRec TimeGridCurTri_c::GetScaledPatValue3D(const Seconds& model_time,Inte
 	
  	// the contributions from each point will default to zero if the depth indicies
 	// come back negative (ie the LE depth is out of bounds at the grid point)
-	if(GetNumTimesInFile()==1 && !(GetNumFiles()>1))
+	if((GetNumTimesInFile()==1 && !(GetNumFiles()>1)) || (fEndData.timeIndex == UNASSIGNEDINDEX && model_time > ((*fTimeHdl)[fStartData.timeIndex] + fTimeShift) && fAllowExtrapolationInTime) || (fEndData.timeIndex == UNASSIGNEDINDEX && model_time < ((*fTimeHdl)[fStartData.timeIndex] + fTimeShift) && fAllowExtrapolationInTime))
+	//if(GetNumTimesInFile()==1 && !(GetNumFiles()>1))
 	{
 		if (pt1depthIndex1!=-1)
 		{
@@ -8773,7 +8863,7 @@ VelocityRec TimeGridCurTri_c::GetScaledPatValue3D(const Seconds& model_time,Inte
 // '[<name>] <value>'
 // <name> == the name of the data item
 // <value> == the value of the data item
-OSErr TimeGridCurTri_c::ReadHeaderLine(string &strIn)
+OSErr TimeGridCurTri_c::ReadHeaderLine(string &strIn, UncertaintyParameters *uncertainParams)
 {
 	string msg;
 	string boundary;
@@ -8830,7 +8920,7 @@ OSErr TimeGridCurTri_c::ReadHeaderLine(string &strIn)
 					if (lineStream.fail()) {
 						goto BadValue;
 					}
-					fVar2.bLayerThickness = thickness;
+					fBoundaryLayerThickness = thickness;
 
 					return 0; // no error
 				}
@@ -8854,7 +8944,7 @@ OSErr TimeGridCurTri_c::ReadHeaderLine(string &strIn)
 			break;
 		case 'U':
 			if (key == "[UNCERTALONG]") {
-				lineStream >> fVar2.alongCurUncertainty;
+				lineStream >> (*uncertainParams).alongCurUncertainty;
 				if (lineStream.fail()) {
 					goto BadValue; 
 				}
@@ -8862,7 +8952,7 @@ OSErr TimeGridCurTri_c::ReadHeaderLine(string &strIn)
 				return 0; // no error
 			}
 			else if (key == "[UNCERTCROSS]") {
-				lineStream >> fVar2.crossCurUncertainty;
+				lineStream >> (*uncertainParams).crossCurUncertainty;
 				if (lineStream.fail()) {
 					goto BadValue; 
 				}
@@ -8870,7 +8960,7 @@ OSErr TimeGridCurTri_c::ReadHeaderLine(string &strIn)
 				return 0; // no error
 			}
 			else if (key == "[UNCERTMIN]") {
-				lineStream >> fVar2.uncertMinimumInMPS;
+				lineStream >> (*uncertainParams).uncertMinimumInMPS;
 				if (lineStream.fail()) {
 					goto BadValue; 
 				}
@@ -9142,7 +9232,7 @@ OSErr TimeGridCurTri_c::ReadTimeData(long index,
 		goto done;
 	}
 
-	for (long i = 0; i < fVar2.numLandPts; i++) {
+	for (long i = 0; i < fNumLandPts; i++) {
 		// zero out boundary velocity
 		numDepths = (*fDepthDataInfo)[i].numDepths;
 		for (long j = 0; j < numDepths; j++) {
@@ -9151,7 +9241,7 @@ OSErr TimeGridCurTri_c::ReadTimeData(long index,
 		}
 	}
 	
-	for (long i = fVar2.numLandPts; i < numPoints; i++) {
+	for (long i = fNumLandPts; i < numPoints; i++) {
 		// interior points
 		long scanLength, stringIndex = 0;
 		numDepths = (*fDepthDataInfo)[i].numDepths;
@@ -9248,7 +9338,7 @@ OSErr TimeGridCurTri_c::TextRead(vector<string> &linesInFile,
 		currentLine = trim(linesInFile[line++]);
 		if (currentLine[0] != '[')
 			break;
-		err = this->ReadHeaderLine(currentLine);
+		//err = this->ReadHeaderLine(currentLine);
 		if (err)
 			goto done;
 	}
@@ -9257,7 +9347,7 @@ OSErr TimeGridCurTri_c::TextRead(vector<string> &linesInFile,
 	// read triangle/topology info if included in file, otherwise calculate
 
 	// Points in Galt format
-	if (IsPtCurVerticesHeaderLine(currentLine, numPoints, fVar2.numLandPts)) {
+	if (IsPtCurVerticesHeaderLine(currentLine, numPoints, fNumLandPts)) {
 		MySpinCursor();
 
 		err = ReadPtCurVertices(linesInFile, &line, &pts, &bathymetryH, errmsg, numPoints);
@@ -9532,7 +9622,57 @@ OSErr TimeGridCurTri_c::TextRead(const char *path, const char *topFilePath)
 
 	vector<string> linesInFile;
 	if (ReadLinesInFile(strPath, linesInFile)) {
-		return TextRead(linesInFile, dir);
+		return TextRead(linesInFile,
+						dir);
+	}
+	else {
+		return false;
+	}
+}
+
+OSErr TimeGridCurTri_c::ReadHeaderLines(vector<string> &linesInFile,
+								 string containingDir, UncertaintyParameters *uncertainParams)
+{
+	char errmsg[256];
+	OSErr err = 0;
+	string currentLine;
+	
+	long line = 0;
+	
+	errmsg[0] = 0;
+	
+	// code goes here, we need to worry about really big files
+	
+	// code goes here, worry about really long lines in the file
+	
+	// read past the header
+	for (long i = 0; i < linesInFile.size(); i++) {
+		currentLine = trim(linesInFile[line++]);
+		if (currentLine[0] != '[')
+			break;
+		err = this->ReadHeaderLine(currentLine, uncertainParams);
+		if (err)
+			goto done;
+	}
+done:
+	return err;
+}
+
+OSErr TimeGridCurTri_c::ReadHeaderLines(const char *path, UncertaintyParameters *uncertainParams)
+{
+	string strPath = path;
+	
+	if (strPath.size() == 0)
+		return 0;
+	strcpy(fVar.pathName, strPath.c_str());
+	
+	string dir, file;
+	SplitPathIntoDirAndFile(strPath, dir, file);
+	
+	
+	vector<string> linesInFile;
+	if (ReadLinesInFile(strPath, linesInFile)) {
+		return ReadHeaderLines(linesInFile, dir, uncertainParams);
 	}
 	else {
 		return false;

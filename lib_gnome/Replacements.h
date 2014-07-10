@@ -21,12 +21,12 @@
 #include "TriGridVel_c.h"
 #include "RectGridVeL_c.h"
 //#include "TideCurCycleMover_c.h"	// this will be part of gridcurrent mover
-#include "Weatherer_c.h"
+//#include "Weatherer_c.h"
 //#include "OSSMWeatherer_c.h"	// may want to add this eventually
 #include "Random_c.h"
 //#include "CompoundMover_c.h"
 #include "ShioTimeValue_c.h"
-#include "ObjectUtils.h"
+//#include "ObjectUtils.h"
 #include "OUTILS.H"	// for the units
 
 
@@ -39,7 +39,7 @@
 #define TOSSMTimeValue OSSMTimeValue_c
 #define TCATSMover CATSMover_c
 #define TTriGridVel TriGridVel_c
-#define TWeatherer Weatherer_c
+//#define TWeatherer Weatherer_c
 //#define TOSSMWeatherer OSSMWeatherer_c
 #define TGridVel GridVel_c
 #define TRectGridVel RectGridVel_c
@@ -87,7 +87,12 @@ Boolean IsPtCurFile (char *path);
 bool IsGridCurTimeFile (std::vector<std::string> &linesInFile, short *selectedUnitsOut);
 Boolean IsGridCurTimeFile (char *path, short *selectedUnits);
 
-//Boolean IsGridWindFile(char *path,short *selectedUnits);
+bool IsGridWindFile (std::vector<std::string> &linesInFile, short *selectedUnitsOut);
+Boolean IsGridWindFile (char *path, short *selectedUnits);
+
+bool IsShioFile (std::vector<std::string> &linesInFile);
+Boolean IsShioFile (char *path);
+
 Boolean IsCATS3DFile (char *path);
 
 #endif

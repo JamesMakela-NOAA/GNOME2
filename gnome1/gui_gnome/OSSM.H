@@ -40,7 +40,9 @@ extern Boolean gDispersedOilVersion;
 extern Boolean gSavingOrPrintingPictFile;
 
 extern Boolean gSaveMossFiles;
+extern Boolean gSaveKMLFile;
 extern char gMossPath[256];
+extern char gKMLPath[256];
 
 extern Boolean sharedPrinting;
 extern short aX, bX, aY, bY;
@@ -84,7 +86,7 @@ Boolean RestoreScreenImage();
 #endif
 
 	#define SETTINGS_VERSION  ((float)1.0)
-	#define GNOME_VERSION_STR  "1.3.7"
+	#define GNOME_VERSION_STR  "1.3.9"
 	
 
 typedef struct {
@@ -605,7 +607,7 @@ enum { PICTMAP = 1, BNAMAP, OSSMMAP,
 
 enum { FT_LOCATIONSAVEFILE = 101, FT_ADVANCEDSAVEFILE, FT_MOVIEFILE, FT_MOSSSAVEFILE,FT_MOSSSAVEFILESERIES,  
 
-		FT_TATSAVEFILE,FT_TATSAVEFILESERIES, FT_NETCDFLEFILESNAPSHOT, FT_NETCDFLEFILE, FT_TAPLEFILE, FT_BITMAPSAVEFILE, FT_PICTSAVEFILE, FT_SAVEBNAMAP, FT_SAVEWIND, FT_SAVETOPOLOGY, FT_OUTPUTCONC, FT_BUDGETTABLE, FT_PICTSAVEFILESERIES  }; // save file types
+		FT_TATSAVEFILE,FT_TATSAVEFILESERIES, FT_NETCDFLEFILESNAPSHOT, FT_NETCDFLEFILE, FT_KMLLEFILESNAPSHOT, FT_KMLLEFILE, FT_TAPLEFILE, FT_BITMAPSAVEFILE, FT_PICTSAVEFILE, FT_SAVEBNAMAP, FT_SAVEWIND, FT_SAVETOPOLOGY, FT_OUTPUTCONC, FT_BUDGETTABLE, FT_PICTSAVEFILESERIES  }; // save file types
 
 
 enum { TATSAVEFILE = 101, MOSSSAVEFILE, MOVIE, BITMAPSAVEFILE, PICTSAVEFILE }; // save file types
@@ -1785,6 +1787,8 @@ void			BringTATForward();
 OSErr			ADCPSettingsDialog (ADCPMover *mover, TMap *owner, Boolean *timeFileChanged);
 
 OSErr			CATSSettingsDialog (TCATSMover *mover, TMap *owner, Boolean *timeFileChanged);
+
+OSErr			CurrentCycleSettingsDialog (CurrentCycleMover *mover, TMap *owner, Boolean *timeFileChanged);
 
 TCATSMover 		*CreateAndInitCatsCurrentsMover (TMap *owner, Boolean askForFile, char* givenPath,char* givenFileName);
 

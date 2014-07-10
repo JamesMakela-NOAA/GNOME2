@@ -46,7 +46,8 @@ void ShioTimeValue_c::InitInstanceVariables(void)
 
 ShioTimeValue_c::ShioTimeValue_c() : OSSMTimeValue_c()
 {
-	daylight_savings_off = true;	// JS: What is this for?
+	daylight_savings_off = false;	// daylight savings should be true by default (so off=false) to match SHIO output
+	//daylight_savings_off = true;	// JS: What is this for? - this just means we pay attention to dst - shio still figures out whether it is the right time of year for it
 	this->InitInstanceVariables();
 	this->fYearDataPath[0] = 0;
 }
@@ -233,9 +234,9 @@ Boolean ShioTimeValue_c::DaylightSavingTimeInEffect(DateTimeRec *dateStdTime)	//
 	// last Sunday in October at 0200.             
 	
 	//return false;	// code goes here, outside US don't use daylight savings
-// 	if (settings.daylightSavingsTimeFlag == DAYLIGHTSAVINGSOFF) return false; // minus AH 07/09/2012
+// 	if (settings.daylightSavingsTimeFlag == DAYLIGHTSAVINGSOFF) return false; 
 	
-	if (this->daylight_savings_off == DAYLIGHTSAVINGSOFF) return false;	// AH 07/09/2012
+	if (this->daylight_savings_off == DAYLIGHTSAVINGSOFF) return false;	
 	
 	switch(dateStdTime->month)
 	{

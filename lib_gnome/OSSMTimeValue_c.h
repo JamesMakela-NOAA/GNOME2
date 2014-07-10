@@ -50,8 +50,8 @@ public:
 	OSSMTimeValue_c ();
 	virtual				   ~OSSMTimeValue_c ();
 
-	virtual ClassID 		GetClassID () { return TYPE_OSSMTIMEVALUES; }
-	virtual Boolean			IAm(ClassID id) { if(id==TYPE_OSSMTIMEVALUES) return TRUE; return TimeValue_c::IAm(id); }
+	//virtual ClassID 		GetClassID () { return TYPE_OSSMTIMEVALUES; }
+	//virtual Boolean			IAm(ClassID id) { if(id==TYPE_OSSMTIMEVALUES) return TRUE; return TimeValue_c::IAm(id); }
 	
 	virtual void			Dispose ();
 	virtual OSErr			GetTimeValue(const Seconds& current_time, VelocityRec *value);
@@ -73,8 +73,10 @@ public:
 	virtual OSErr			ReadNCDCWind (char *path);
 	virtual OSErr			ReadTimeValues (char *path, short format, short unitsIfKnownInAdvance);
 	OSErr					ReadOSSMTimeHeader (char *path);
+	OSErr					ReadHydrologyHeader (vector<string> &linesInFile);
 	OSErr					ReadHydrologyHeader (char *path);
 
+	virtual OSErr 			GetLocationInTideCycle(const Seconds& model_time, short *ebbFloodType, float *fraction) {*ebbFloodType=0; *fraction=0; return 0;}
 	
 protected:
 	OSErr					GetInterpolatedComponent (Seconds forTime, double *value, short index);

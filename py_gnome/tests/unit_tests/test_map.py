@@ -11,12 +11,16 @@ Designed to be run with py.test
 
 from __future__ import division
 import os
+
 import numpy as np
+import pytest
+
 import gnome.map
 from gnome.basic_types import oil_status, status_code_type
 from gnome.utilities.projections import NoProjection
 
 from gnome.map import MapFromBNA, RasterMap
+from gnome.persist import load
 
 from conftest import sample_sc_release
 
@@ -198,24 +202,12 @@ class Test_GnomeMap:
         assert gmap.allowable_spill_position((370.0, -87.0, 0.)) \
             is False
 
-    def test_GnomeMap_new_from_dict(self):
-        """
-        test create new object from to_dict
-        """
-
-        gmap = gnome.map.GnomeMap()
-        dict_ = gmap.to_dict('create')
-        dict_.pop('obj_type')
-        gmap2 = gmap.new_from_dict(dict_)
-
-        assert gmap == gmap2
-
     def test_GnomeMap_from_dict(self):
         gmap = gnome.map.GnomeMap()
         dict_ = gmap.to_dict()
         dict_['map_bounds'] = ((-10, 10), (10, 10), (10, -10), (-10,
                                -10))
-        gmap.from_dict(dict_)
+        gmap.update_from_dict(dict_)
         assert gmap.map_bounds == dict_['map_bounds']
 
 
@@ -233,6 +225,20 @@ class Test_RasterMap:
     # set some land in middle:
 
     raster[6:13, 4:8] = 1
+
+    def test_save_as_image(self):
+        """
+        only tests that it doesn't crash -- you need to look at the
+        image to see if it's right
+        """
+        rmap = RasterMap(refloat_halflife=6,
+                         bitmap_array=self.raster,
+                         map_bounds=((-50, -30), (-50, 30), (50, 30),(50, -30)),
+                         projection=NoProjection())  
+
+        rmap.save_as_image('raster_map_image.png')
+
+        assert True
 
     def test_on_map(self):
         gmap = RasterMap(refloat_halflife=6, bitmap_array=self.raster,
@@ -317,8 +323,8 @@ class TestRefloat:
 
     map = RasterMap(refloat_halflife=time_step / 3600.,
                     bitmap_array=np.zeros((20, 12), dtype=np.uint8),
-                    projection=NoProjection(), map_bounds=((-50, -30),
-                    (-50, 30), (50, 30), (50, -30)))  # hours
+                    projection=NoProjection(),
+                    map_bounds=((-50, -30),(-50, 30), (50, 30), (50, -30)))  # hours
 
     num_les = 1000
     spill = sample_sc_release(num_les)
@@ -338,7 +344,7 @@ class TestRefloat:
         all elements in water so do nothing
         """
 
-        self.reset()  # reset state
+        self.reset()  # reset _state
         (self.spill['status_codes'])[:] = oil_status.in_water
         self.map.refloat_elements(self.spill, self.time_step)
         assert np.all(self.spill['positions'] == self.orig_pos)
@@ -356,6 +362,23 @@ class TestRefloat:
         assert np.all((self.spill['positions'])[:5]
                       == self.orig_pos[:5])
         assert np.all((self.spill['positions'])[5:] == self.last_water)
+
+    def test_refloat_halflife_negative(self):
+        """
+        refloat_halflife is test_refloat_halflife_negative:
+
+        this should mean totally sticky --no refloat
+
+        """
+
+        self.reset()
+        self.map.refloat_halflife = -1
+        (self.spill['status_codes'])[5:] = oil_status.on_land
+        orig_status_codes = self.spill['status_codes'].copy()
+        self.map.refloat_elements(self.spill, self.time_step)
+        assert np.all((self.spill['positions']) == self.orig_pos)
+        assert np.all( self.spill['status_codes'] == orig_status_codes)
+
 
     def test_refloat_some_onland(self):
         """
@@ -520,25 +543,22 @@ class Test_MapfromBNA:
         assert not self.bna_map.on_map(point)
 
 
-def test_MapfromBNA_new_from_dict():
+@pytest.mark.parametrize("json_", ('save', 'webapi'))
+def test_serialize_deserialize(json_):
     """
     test create new object from to_dict
     """
 
     gmap = gnome.map.MapFromBNA(testmap, 6)
-    dict_ = gmap.to_dict('create')
-    dict_.pop('obj_type')
+    serial = gmap.serialize('webapi')
+    dict_ = gnome.map.MapFromBNA.deserialize(serial)
     map2 = gmap.new_from_dict(dict_)
     assert gmap == map2
 
-
-def test_MapfromBNA_from_dict():
-    gmap = gnome.map.MapFromBNA(testmap, 6)
-    dict_ = gmap.to_dict()
     dict_['map_bounds'] = ((-10, 10), (10, 10), (10, -10), (-10, -10))
     dict_['spillable_area'] = ((-5, 5), (5, 5), (5, -5), (-5, -5))
     dict_['refloat_halflife'] = 2
-    gmap.from_dict(dict_)
+    gmap.update_from_dict(dict_)
     assert gmap.map_bounds == dict_['map_bounds']
     assert gmap.spillable_area == dict_['spillable_area']
     assert gmap.refloat_halflife == dict_['refloat_halflife']

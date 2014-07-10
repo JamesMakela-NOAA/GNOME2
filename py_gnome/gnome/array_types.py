@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 '''
 Module contains array types that a mover may need based on the data
 movers needs
@@ -24,30 +25,24 @@ movers needs
 import sys
 import inspect
 
-from gnome.basic_types import (
-    world_point_type,
-    windage_type,
-    status_code_type,
-    oil_status,
-    id_type)
-import numpy as np
+from gnome.basic_types import (world_point_type,
+                               windage_type,
+                               status_code_type,
+                               oil_status,
+                               id_type)
+
+import numpy
+np = numpy
 
 
 class ArrayType(object):
-
     """
     Object used to capture attributes of numpy data array for elements
 
     An ArrayType specifies how data arrays associated with elements
     are defined.
     """
-
-    def __init__(
-        self,
-        shape,
-        dtype,
-        initial_value=0,
-        ):
+    def __init__(self, shape, dtype, initial_value=0):
         """
         constructor for ArrayType
 
@@ -56,7 +51,6 @@ class ArrayType(object):
         :param dtype: numpy datatype contained in array
         :type dtype: numpy dtype
         """
-
         self.shape = shape
         self.dtype = dtype
         self.initial_value = initial_value
@@ -85,8 +79,6 @@ class ArrayType(object):
         return arr
 
     def __eq__(self, other):
-        """" Equality of two ArrayType objects """
-
         if not isinstance(other, self.__class__):
             return False
 
@@ -97,22 +89,13 @@ class ArrayType(object):
             if key not in other.__dict__:
                 return False
             elif val != other.__dict__[key]:
-
                 return False
 
         # everything passed, then they must be equal
-
         return True
 
     def __ne__(self, other):
-        """
-        Compare inequality (!=) of two objects
-        """
-
-        if self == other:
-            return False
-        else:
-            return True
+        return not self == other
 
 
 class IdArrayType(ArrayType):
@@ -129,8 +112,8 @@ class IdArrayType(ArrayType):
 # and 'element_id' properly. Referencing global ArrayType objects for this
 # means the initial values may not get reset. Need a function to reset
 # to default values
-_default_values = \
-    {'positions': ((3,), world_point_type, (0., 0., 0.)),
+_default_values = {
+     'positions': ((3,), world_point_type, (0., 0., 0.)),
      'next_positions': ((3,), world_point_type, (0., 0., 0.)),
      'last_water_positions': ((3,), world_point_type, (0., 0., 0.)),
      'status_codes': ((), status_code_type, oil_status.in_water),
@@ -141,7 +124,12 @@ _default_values = \
      'windage_range': ((2,), np.float64, (0., 0.)),
      'windage_persist': ((), np.int, 0),
      'rise_vel': ((), np.float64, 0.),
-     }
+     'droplet_diameter': ((), np.float64, 0.),
+     'age': ((), np.int32, 0),
+     'mass_components': ((5,), np.float64, (1., 0., 0., 0., 0.)),
+     'half_lives': ((5,), np.float64,
+                    (np.inf, np.inf, np.inf, np.inf, np.inf)),
+      }
 
 
 # dynamically create the ArrayType objects in this module from _default_values
@@ -159,7 +147,8 @@ for key, val in _default_values.iteritems():
 
 # use reflection to:
 #    define a function to reset all ArrayTypes to defaults
-_to_reset = inspect.getmembers(sys.modules[__name__], predicate=lambda members:
+_to_reset = inspect.getmembers(sys.modules[__name__],
+                               predicate=lambda members:
                                (False, True)[isinstance(members, ArrayType)])
 _at_names = [item[0] for item in _to_reset]
 
@@ -171,7 +160,3 @@ def reset_to_defaults(names=_at_names):
             obj.shape = _default_values[item[0]][0]
             obj.dtype = _default_values[item[0]][1]
             obj.initial_value = _default_values[item[0]][2]
-
-
-## TODO: Find out if this is still required?
-# water_currents = ArrayType( (3,), basic_types.water_current_type)

@@ -10,7 +10,9 @@ Adds some for Python-only use
 """
 
 import sys
-import numpy as np
+
+import numpy
+np = numpy
 
 from cy_gnome.cy_basic_types import *  # pull everything from the cython code
 
@@ -48,8 +50,15 @@ world_point_type = np.float64
 windage_type = np.float64
 water_current_type = np.float64
 
-datetime_value_2d = np.dtype([('time', 'datetime64[s]'), ('value',
-                             mover_type, (2, ))], align=True)
+# value has two components: (u, v) or (r, theta) etc
+datetime_value_2d = np.dtype([('time', 'datetime64[s]'),
+    ('value', mover_type, (2, ))], align=True)
+
+# value has one component: (u,)
+# convert from datetime_value_1d to time_value_pair by setting 2nd component
+# of value to 0.0
+datetime_value_1d = np.dtype([('time', 'datetime64[s]'),
+    ('value', mover_type, (1,))], align=True)
 
 # enums that are same as C++ values are defined in cy_basic_types
 # Define enums that are independent of C++ here so we
@@ -87,3 +96,20 @@ status_code_type = np.int16
 # id_type is dtype for numpy array for 'spill_num'. This is NOT currently passed to C++
 
 id_type = np.uint16
+
+
+#------------------------------------------------
+# NOTE: This is only used to test that the python time_utils
+# converts from date to sec and sec to date in the same way
+# as the C++ code. Currently, cy_helpers defines the CyDateTime
+# class which is merely used for testing the time_utils conversions
+# test_cy_helpers.TestCyDateTime class contians these tests
+date_rec = np.dtype([
+        ('year', np.short),
+        ('month', np.short),
+        ('day', np.short),
+        ('hour', np.short),
+        ('minute', np.short),
+        ('second', np.short),
+        ('dayOfWeek', np.short),
+        ], align=True)

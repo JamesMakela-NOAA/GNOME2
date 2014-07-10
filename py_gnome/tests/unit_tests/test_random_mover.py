@@ -6,12 +6,13 @@ designed to be run with py.test
 
 import datetime
 import numpy as np
+import os
 
 from gnome.movers import RandomMover
 
 from gnome.utilities.time_utils import sec_to_date, date_to_sec
 from gnome.utilities.projections import FlatEarthProjection
-
+from gnome.persist import load
 from conftest import sample_sc_release
 
 import pytest
@@ -27,6 +28,9 @@ def test_exceptions():
 
     with pytest.raises(ValueError):
         RandomMover(diffusion_coef=-1000)
+
+    with pytest.raises(ValueError):
+        RandomMover(uncertain_factor=0)
 
 
 class TestRandomMover:
@@ -73,6 +77,10 @@ class TestRandomMover:
     def test_change_diffusion_coef(self):
         self.mover.diffusion_coef = 200000
         assert self.mover.diffusion_coef == 200000
+
+    def test_change_uncertain_factor(self):
+        self.mover.uncertain_factor = 3
+        assert self.mover.uncertain_factor == 3
 
     def test_prepare_for_model_step(self):
         """
@@ -134,18 +142,6 @@ def test_variance1(start_loc, time_step):
     expected = 2.0 * (D * 1e-4) * num_steps * time_step
 
     assert np.allclose(var, (expected, expected, 0.), rtol=0.1)
-
-
-def test_new_from_dict():
-    """
-    test to_dict function for Wind object
-    create a new wind object and make sure it has same properties
-    """
-
-    rm = RandomMover()
-    print rm.to_dict('create')
-    rm2 = RandomMover.new_from_dict(rm.to_dict('create'))
-    assert rm == rm2
 
 
 if __name__ == '__main__':

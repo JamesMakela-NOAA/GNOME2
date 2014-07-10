@@ -1,24 +1,34 @@
 #!/usr/bin/env python
-
-"""
+'''
 Tests the SpillContainer class
-"""
+'''
 
 from datetime import datetime, timedelta
 import copy
 
-import numpy as np
 import pytest
+from pytest import raises
+from conftest import sample_sc_release
+
+import numpy
+np = numpy
 
 from gnome.basic_types import (oil_status,
                                world_point_type,
                                id_type)
-from gnome.spill_container import SpillContainer, SpillContainerPair
-from gnome.spill import PointLineSource
 from gnome import array_types
-from gnome import elements
+from gnome.spill.elements import (ElementType,
+                            InitMassFromTotalMass,
+                            InitWindages,
+                            InitRiseVelFromDist,
+                            InitRiseVelFromDropletSizeFromDist,
+                            floating)
 
-from conftest import sample_sc_release
+from gnome.utilities.distributions import UniformDistribution
+
+from gnome.spill_container import SpillContainer, SpillContainerPair
+from gnome.spill import point_line_release_spill, Spill, Release
+
 
 # additional array_type for testing spill_container functionality
 windage_at = {'windages': array_types.windages,
@@ -35,7 +45,18 @@ end_release_time = datetime(2012, 1, 1, 12) + timedelta(hours=4)
 
 def test_simple_init():
     sc = SpillContainer()
-    assert sc
+    assert sc != None
+
+
+def test_length_zero():
+    sc = SpillContainer()
+    assert len(sc) == 0
+
+
+def test_length():
+    sp = sample_sc_release()
+
+    assert len(sp) == 10
 
 
 ### Helper functions ###
@@ -56,8 +77,8 @@ def assert_sc_single_spill(sc):
 
     # only one spill in SpillContainer
     for spill in sc.spills:
-        assert np.array_equal(sc['positions'][0], spill.start_position)
-        assert np.array_equal(sc['positions'][-1], spill.end_position)
+        assert np.array_equal(sc['positions'][0], spill.release.start_position)
+        assert np.array_equal(sc['positions'][-1], spill.release.end_position)
 
 
 def test_test_spill_container():
@@ -65,13 +86,11 @@ def test_test_spill_container():
     assert_sc_single_spill(sc)
 
 
-## real testing involves adding spills!
-
 @pytest.mark.parametrize("spill",
-                         [PointLineSource(num_elements,
+                         [point_line_release_spill(num_elements,
                                           start_position,
                                           release_time),
-                          PointLineSource(num_elements,
+                          point_line_release_spill(num_elements,
                                           start_position,
                                           release_time,
                                           end_position,
@@ -84,13 +103,14 @@ def test_one_simple_spill(spill):
     time_step = 3600
 
     sc.prepare_for_model_run(windage_at)
-    num_steps = ((spill.end_release_time -
-                  spill.release_time).seconds / time_step + 1)
+    num_steps = ((spill.release.end_release_time -
+                  spill.release.release_time).seconds / time_step + 1)
     for step in range(num_steps):
-        current_time = spill.release_time + timedelta(seconds=time_step * step)
+        current_time = (spill.release.release_time +
+                        timedelta(seconds=time_step * step))
         sc.release_elements(time_step, current_time)
 
-    assert sc.num_released == spill.num_elements
+    assert sc.num_released == spill.release.num_elements
 
     assert_sc_single_spill(sc)
 
@@ -104,8 +124,9 @@ def test_multiple_spills(uncertain):
     already released.
     """
     sc = SpillContainer(uncertain)
-    spills = [PointLineSource(num_elements, start_position, release_time),
-              PointLineSource(num_elements, start_position,
+    spills = [point_line_release_spill(num_elements, start_position,
+                                       release_time),
+              point_line_release_spill(num_elements, start_position,
                     release_time + timedelta(hours=1),
                     end_position, end_release_time)]
 
@@ -117,8 +138,8 @@ def test_multiple_spills(uncertain):
     assert sc.uncertain == uncertain
 
     time_step = 3600
-    num_steps = ((spills[-1].end_release_time -
-                  spills[-1].release_time).seconds / time_step + 1)
+    num_steps = ((spills[-1].release.end_release_time -
+                  spills[-1].release.release_time).seconds / time_step + 1)
 
     sc.prepare_for_model_run(windage_at)
 
@@ -126,17 +147,17 @@ def test_multiple_spills(uncertain):
         current_time = release_time + timedelta(seconds=time_step * step)
         sc.release_elements(time_step, current_time)
 
-    assert sc.num_released == spills[0].num_elements * len(spills)
+    assert sc.num_released == spills[0].release.num_elements * len(spills)
     assert_dataarray_shape_size(sc)
 
     sc.spills.remove(spills[0].id)
 
-    with pytest.raises(KeyError):
+    with raises(KeyError):
         # it shouldn't be there anymore.
         assert sc.spills[spills[0].id] is None
 
     # however, the data arrays of released particles should be unchanged
-    assert sc.num_released == spill.num_elements * len(spills)
+    assert sc.num_released == spill.release.num_elements * len(spills)
     assert_dataarray_shape_size(sc)
 
 
@@ -154,8 +175,8 @@ def test_rewind():
     start_position = (23.0, -78.5, 0.0)
     sc = SpillContainer()
 
-    spills = [PointLineSource(num_elements, start_position, release_time),
-              PointLineSource(num_elements, start_position, release_time2)]
+    spills = [point_line_release_spill(num_elements, start_position, release_time),
+              point_line_release_spill(num_elements, start_position, release_time2)]
     sc.spills.add(spills)
 
     sc.prepare_for_model_run(windage_at)
@@ -165,22 +186,22 @@ def test_rewind():
 
     assert sc.num_released == num_elements * len(spills)
     for spill in spills:
-        assert spill.num_released == spill.num_elements
+        assert spill.get('num_released') == spill.release.num_elements
 
     sc.rewind()
     assert sc.num_released == 0
     assert_dataarray_shape_size(sc)
     for spill in spills:
-        assert spill.num_released == 0
-        assert spill.start_time_invalid
+        assert spill.get('num_released') == 0
+        assert spill.release.start_time_invalid
 
 
 def test_data_access():
-    sp = sample_sc_release()
+    sc = sample_sc_release()
 
-    sp['positions'] += (3.0, 3.0, 3.0)
+    sc['positions'] += (3.0, 3.0, 3.0)
 
-    assert np.array_equal(sp['positions'], np.ones((sp.num_released, 3),
+    assert np.array_equal(sc['positions'], np.ones((sc.num_released, 3),
                           dtype=world_point_type) * 3.0)
 
 
@@ -208,7 +229,7 @@ def test_data_setting_wrong_size_error():
 
     new_pos = np.ones((sc.num_released + 2, 3), dtype=world_point_type) * 3.0
 
-    with pytest.raises(ValueError):
+    with raises(ValueError):
         sc['positions'] = new_pos
 
 
@@ -221,7 +242,7 @@ def test_data_setting_wrong_dtype_error():
 
     new_pos = np.ones((sc.num_released, 3), dtype=np.int32)
 
-    with pytest.raises(ValueError):
+    with raises(ValueError):
         sc['positions'] = new_pos
 
 
@@ -234,7 +255,7 @@ def test_data_setting_wrong_shape_error():
 
     new_pos = np.ones((sc.num_released, 4), dtype=world_point_type) * 3.0
 
-    with pytest.raises(ValueError):
+    with raises(ValueError):
         sc['positions'] = new_pos
 
 
@@ -246,7 +267,7 @@ def test_data_setting_new():
     No rewind necessary. Subsequent releases will initialize the newly added
     numpy array for newly released particles
     """
-    spill = PointLineSource(20, start_position, release_time,
+    spill = point_line_release_spill(20, start_position, release_time,
                             end_release_time=end_release_time)
     # release 10 particles
     time_step = (end_release_time - release_time) / 2
@@ -256,18 +277,19 @@ def test_data_setting_new():
     new_arr = np.ones((sc.num_released, 3), dtype=np.float64)
     sc['new_name'] = new_arr
 
-    assert 'new_name' in sc.data_arrays_dict
+    assert 'new_name' in sc.data_arrays
     assert 'new_name' in sc.array_types
     assert sc['new_name'] is new_arr
     assert_dataarray_shape_size(sc)
 
     # now release remaining particles and check to see new_name is populated
     # with zeros - default initial_value
-    sc.release_elements(time_step.seconds, spill.release_time + time_step)
+    sc.release_elements(time_step.seconds,
+                        spill.release.release_time + time_step)
     new_released = sc.num_released - released
 
     assert_dataarray_shape_size(sc)  # shape is consistent for all arrays
-    assert sc.num_released == spill.num_elements     # release all elements
+    assert sc.num_released == spill.release.num_elements  # release all elems
     assert np.all(sc['new_name'][-new_released:] ==  # initialized to 0!
                   (0.0, 0.0, 0.0))
 
@@ -376,10 +398,10 @@ def test_uncertain_copy():
     num_elements = 100
 
     sc = SpillContainer()
-    spill = PointLineSource(num_elements, start_position,
+    spill = point_line_release_spill(num_elements, start_position,
             release_time)
 
-    sp2 = PointLineSource(num_elements, start_position2,
+    sp2 = point_line_release_spill(num_elements, start_position2,
                                     start_time2)
 
     sc.spills.add(spill)
@@ -448,16 +470,20 @@ def test_ordered_collection_api():
     num_elements = 100
 
     sc = SpillContainer()
-    sc.spills += PointLineSource(num_elements,
+    sc.spills += point_line_release_spill(num_elements,
             start_position, release_time)
     assert len(sc.spills) == 1
 
 
 """ tests w/ element types set for two spills """
-el = elements.FloatingMassFromVolumeRiseVel()
-el.initializers['windages'].windage_range = [0.02, 0.02]
-el.initializers['windages'].windage_persist = -1
-el.initializers['rise_vel'].params = [1, 10]
+el0 = ElementType({'windages': InitWindages((0.02, 0.02), -1),
+                   'mass': InitMassFromTotalMass(),
+                   'rise_vel': InitRiseVelFromDist(distribution=UniformDistribution(low=1, high=10))
+                   })
+
+el1 = ElementType({'windages': InitWindages(),
+                   'mass': InitMassFromTotalMass(),
+                   'rise_vel': InitRiseVelFromDist()})
 
 arr_types = {'windages': array_types.windages,
              'windage_range': array_types.windage_range,
@@ -466,7 +492,7 @@ arr_types = {'windages': array_types.windages,
 
 
 @pytest.mark.parametrize(("elem_type", "arr_types"),
-        [((el, elements.FloatingMassFromVolumeRiseVel()), arr_types)])
+        [((el0, el1), arr_types)])
 def test_element_types(elem_type, arr_types, sample_sc_no_uncertainty):
     """
     Tests that the spill_container's data_arrays associated with initializers
@@ -479,11 +505,11 @@ def test_element_types(elem_type, arr_types, sample_sc_no_uncertainty):
         spill.element_type = elem_type[idx]
 
         if release_t is None:
-            release_t = spill.release_time
+            release_t = spill.release.release_time
 
         # set release time based on earliest release spill
-        if spill.release_time < release_t:
-            release_t = spill.release_time
+        if spill.release.release_time < release_t:
+            release_t = spill.release.release_time
 
     time_step = 3600
     num_steps = 4   # just run for 4 steps
@@ -500,7 +526,7 @@ def test_element_types(elem_type, arr_types, sample_sc_no_uncertainty):
         spill_mask = sc.get_spill_mask(spill)
 
         for key in spill.element_type.initializers:
-            if key in sc.data_arrays_dict:
+            if key in sc.data_arrays:
                 if key == 'windage_range':
                     assert (np.all(sc[key][spill_mask] ==
                         spill.element_type.initializers[key].windage_range))
@@ -508,20 +534,17 @@ def test_element_types(elem_type, arr_types, sample_sc_no_uncertainty):
                     assert (np.all(sc[key][spill_mask] ==
                         spill.element_type.initializers[key].windage_persist))
                 elif key == 'rise_vel':
-                    assert (np.all(sc[key][spill_mask] >=
-                        spill.element_type.initializers[key].params[0]))
-                    assert (np.all(sc[key][spill_mask] <=
-                        spill.element_type.initializers[key].params[1]))
+                    if (isinstance(spill.element_type.initializers[key].distribution,
+                                   UniformDistribution)):
+                        low = spill.element_type.initializers[key].distribution.low
+                        high = spill.element_type.initializers[key].distribution.high
 
-
-""" SpillContainerPairData tests """
+                        assert (np.all(sc[key][spill_mask] >= low))
+                        assert (np.all(sc[key][spill_mask] <= high))
 
 
 def test_init_SpillContainerPair():
-    """
-    all this does is test that it can be initialized
-    """
-
+    'All this does is test that it can be initialized'
     SpillContainerPair()
     SpillContainerPair(True)
 
@@ -529,7 +552,7 @@ def test_init_SpillContainerPair():
 
 
 def test_SpillContainerPair_uncertainty():
-    """ test uncertainty property """
+    'test uncertainty property'
 
     u_scp = SpillContainerPair(True)
     u_scp.uncertain = False
@@ -542,7 +565,6 @@ def test_SpillContainerPair_uncertainty():
 
 
 class TestAddSpillContainerPair:
-
     start_time = datetime(2012, 1, 1, 12)
     start_time2 = datetime(2012, 1, 2, 12)
 
@@ -556,27 +578,27 @@ class TestAddSpillContainerPair:
         tests that spills can be added to SpillContainerPair object
         """
 
-        spill = PointLineSource(self.num_elements,
+        spill = point_line_release_spill(self.num_elements,
                 self.start_position, self.start_time)
-        sp2 = PointLineSource(self.num_elements,
+        sp2 = point_line_release_spill(self.num_elements,
                 self.start_position2, self.start_time2)
         scp = SpillContainerPair(True)
 
-        with pytest.raises(ValueError):
+        with raises(ValueError):
             scp += (spill, sp2, spill)
 
     def test_exception_uncertainty(self):
-        spill = PointLineSource(self.num_elements,
+        spill = point_line_release_spill(self.num_elements,
                 self.start_position, self.start_time)
-        sp2 = PointLineSource(self.num_elements,
+        sp2 = point_line_release_spill(self.num_elements,
                 self.start_position2, self.start_time2)
         scp = SpillContainerPair(False)
 
-        with pytest.raises(ValueError):
+        with raises(ValueError):
             scp += (spill, sp2)
 
     def test_add_spill(self):
-        spill = [PointLineSource(self.num_elements,
+        spill = [point_line_release_spill(self.num_elements,
                  self.start_position, self.start_time) for i in
                  range(2)]
 
@@ -590,11 +612,11 @@ class TestAddSpillContainerPair:
             assert spill_.id == spill[index].id
 
     def test_add_spillpair(self):
-        c_spill = [PointLineSource(self.num_elements,
+        c_spill = [point_line_release_spill(self.num_elements,
                    self.start_position, self.start_time) for i in
                    range(2)]
 
-        u_spill = [PointLineSource(self.num_elements,
+        u_spill = [point_line_release_spill(self.num_elements,
                    self.start_position2, self.start_time2) for i in
                    range(2)]
 
@@ -603,24 +625,56 @@ class TestAddSpillContainerPair:
         for sp_tuple in zip(c_spill, u_spill):
             scp += sp_tuple
 
-        for sp_ix in zip(scp._spill_container.spills,
-                         range(len(c_spill))):
-            spill = sp_ix[0]
-            index = sp_ix[1]
-            assert spill.id == c_spill[index].id
+        for sp, idx in zip(scp._spill_container.spills, range(len(c_spill))):
+            assert sp.id == c_spill[idx].id
 
-        for sp_ix in zip(scp._u_spill_container.spills,
-                         range(len(c_spill))):
-            spill = sp_ix[0]
-            index = sp_ix[1]
-            assert spill.id == u_spill[index].id
+        for sp, idx in zip(scp._u_spill_container.spills, range(len(c_spill))):
+            assert sp.id == u_spill[idx].id
 
-    def test_to_dict(self):
-        c_spill = [PointLineSource(self.num_elements,
+    def test_release_particles(self):
+        '''test that the 'id' for uncertain spill container's data is
+        starting from 0'''
+        spill = [point_line_release_spill(self.num_elements,
+                 self.start_position, self.start_time) for i in
+                 range(2)]
+
+        scp = SpillContainerPair(True)
+        scp += spill[0]
+        scp += spill[1]
+        for sc in scp.items():
+            sc.prepare_for_model_run(windage_at)
+            # model sets this for each step
+            sc.current_time_stamp = self.start_time
+            sc.release_elements(100, self.start_time)
+
+        for key in ['id', 'spill_num', 'age']:
+            c_val = scp.LE(key)
+            u_val = scp.LE(key, 'uncertain')
+            assert np.all(c_val == u_val)
+
+    def test_spill_by_index(self):
+        'test spill_by_index returns the correct spill object'
+        spill = [point_line_release_spill(self.num_elements,
+                                          self.start_position, self.start_time),
+                 point_line_release_spill(self.num_elements,
+                                          self.start_position, self.start_time)]
+
+        scp = SpillContainerPair(True)
+        scp += spill[0]
+        scp += spill[1]
+        for ix in range(2):
+            assert scp.spill_by_index(ix) is spill[ix]
+            u_spill = scp.spill_by_index(ix, uncertain=True)
+            assert u_spill is not spill[ix]
+            assert scp.items()[1].spills[ix] is u_spill
+
+    @pytest.mark.parametrize('json_', ['save', 'webapi'])
+    def test_to_dict(self, json_):
+        c_spill = [point_line_release_spill(self.num_elements,
                    self.start_position, self.start_time) for i in
                    range(2)]
 
-        u_spill = [PointLineSource(self.num_elements,
+        u_spill = [point_line_release_spill(self.num_elements,
                    self.start_position2, self.start_time2) for i in
                    range(2)]
 
@@ -629,25 +683,26 @@ class TestAddSpillContainerPair:
         for sp_tuple in zip(c_spill, u_spill):
             scp += sp_tuple
 
-        dict_ = scp.to_dict()
+        toserial = scp.to_dict()
+        assert 'spills' in toserial
+        assert 'uncertain_spills' in toserial
 
-        for key in dict_.keys():
-            if key == 'certain_spills':
-                enum_spill = c_spill
-            elif key == 'uncertain_spills':
-                enum_spill = u_spill
+        for key in ('spills', 'uncertain_spills'):
+            if key == 'spills':
+                check = c_spill
+            else:
+                check = u_spill
 
-            for (i, spill) in enumerate(enum_spill):
-                assert dict_[key]['id_list'][i][0] \
-                    == '{0}.{1}'.format(spill.__module__,
-                        spill.__class__.__name__)
-                assert dict_[key]['id_list'][i][1] == spill.id
+            alltrue = [check[ix].id == spill['id'] \
+                                for ix, spill in enumerate(toserial[key])]
+            assert all(alltrue)
+            alltrue = [check[ix].obj_type_to_dict() == spill['obj_type'] \
+                                for ix, spill in enumerate(toserial[key])]
+            assert all(alltrue)
 
 
 def test_get_spill_mask():
-    """
-    Simple tests for get_spill_mask
-    """
+    'Simple tests for get_spill_mask'
 
     start_time0 = datetime(2012, 1, 1, 12)
     start_time1 = datetime(2012, 1, 2, 12)
@@ -655,17 +710,17 @@ def test_get_spill_mask():
     start_position = (23.0, -78.5, 0.0)
     num_elements = 5
     sc = SpillContainer()
-    sp0 = PointLineSource(num_elements, start_position,
+    sp0 = point_line_release_spill(num_elements, start_position,
                                     start_time0)
 
-    sp1 = PointLineSource(num_elements, start_position,
+    sp1 = point_line_release_spill(num_elements, start_position,
                                     start_time1,
                                     end_position=(start_position[0]
                                     + 0.2, start_position[1] + 0.2,
                                     0.0), end_release_time=start_time1
                                     + timedelta(hours=3))
 
-    sp2 = PointLineSource(num_elements, start_position,
+    sp2 = point_line_release_spill(num_elements, start_position,
                                     start_time2)
 
     sc.spills += [sp0, sp1, sp2]
@@ -695,12 +750,15 @@ def test_eq_spill_container():
     sc2.spills.add(sp2)
 
     sc1.prepare_for_model_run(windage_at)
-    sc1.release_elements(360, sp1.release_time)
+    sc1.release_elements(360, sp1.release.release_time)
 
     sc2.prepare_for_model_run(windage_at)
-    sc2.release_elements(360, sp2.release_time)
+    sc2.release_elements(360, sp2.release.release_time)
 
     assert sc1 == sc2
+    assert sc2 == sc1
+    assert not (sc1 != sc2)
+    assert not (sc2 != sc1)
 
 
 def test_eq_allclose_spill_container():
@@ -714,7 +772,7 @@ def test_eq_allclose_spill_container():
 
     # just move one data array a bit
 
-    sp2.start_position = sp2.start_position + (1e-8, 1e-8, 0)
+    sp2.start_position = sp2.release.start_position + (1e-8, 1e-8, 0)
 
     sc1 = SpillContainer()
     sc2 = SpillContainer()
@@ -723,10 +781,10 @@ def test_eq_allclose_spill_container():
     sc2.spills.add(sp2)
 
     sc1.prepare_for_model_run(windage_at)
-    sc1.release_elements(360, sp1.release_time)
+    sc1.release_elements(360, sp1.release.release_time)
 
     sc2.prepare_for_model_run(windage_at)
-    sc2.release_elements(360, sp2.release_time)
+    sc2.release_elements(360, sp2.release.release_time)
 
     # need to change both atol
 
@@ -735,6 +793,8 @@ def test_eq_allclose_spill_container():
 
     assert sc1 == sc2
     assert sc2 == sc1
+    assert not (sc1 != sc2)
+    assert not (sc2 != sc1)
 
 
 @pytest.mark.parametrize("uncertain", [False, True])
@@ -757,8 +817,8 @@ def test_eq_spill_container_pair(uncertain):
     # windages array will not match after elements are released so lets not
     # add any more types to data_arrays for this test. Just look at base
     # array_types for SpillContainer's and ensure the data matches for them
-    sp1.element_type = elements.ElementType()
-    sp2.element_type = elements.ElementType()
+    #sp1.element_type = ElementType()
+    #sp2.element_type = ElementType()
 
     scp1 = SpillContainerPair(uncertain)  # uncertainty is on
     scp1.add(sp1)
@@ -768,7 +828,10 @@ def test_eq_spill_container_pair(uncertain):
         u_sp1 = [scp1.items()[1].spills[spill.id] for spill in
                  scp1.items()[1].spills][0]
 
-        u_sp2 = PointLineSource.new_from_dict(u_sp1.to_dict('create'))
+        u_sp2 = copy.deepcopy(u_sp1)
+        # deepcopy does not match ids!
+        # for test, we need these to match so force them to be equal here
+        u_sp2._id = u_sp1.id
 
         scp2.add((sp2, u_sp2))
     else:
@@ -776,11 +839,14 @@ def test_eq_spill_container_pair(uncertain):
 
     for sc in zip(scp1.items(), scp2.items()):
         sc[0].prepare_for_model_run()
-        sc[0].release_elements(360, sp1.release_time)
+        sc[0].release_elements(360, sp1.release.release_time)
         sc[1].prepare_for_model_run()
-        sc[1].release_elements(360, sp2.release_time)
+        sc[1].release_elements(360, sp2.release.release_time)
 
     assert scp1 == scp2
+    assert scp2 == scp1
+    assert not (scp1 != scp2)
+    assert not (scp2 != scp1)
 
 
 def test_ne_spill_container():
@@ -790,7 +856,7 @@ def test_ne_spill_container():
 
     # just move one data array a bit
 
-    sp2.start_position = sp2.start_position + (1e-8, 1e-8, 0)
+    sp2.release.start_position = sp2.release.start_position + (1e-8, 1e-8, 0)
 
     sc1 = SpillContainer()
     sc2 = SpillContainer()
@@ -799,12 +865,15 @@ def test_ne_spill_container():
     sc2.spills.add(sp2)
 
     sc1.prepare_for_model_run(windage_at)
-    sc1.release_elements(360, sp1.release_time)
+    sc1.release_elements(360, sp1.release.release_time)
 
     sc2.prepare_for_model_run(windage_at)
-    sc2.release_elements(360, sp2.release_time)
+    sc2.release_elements(360, sp2.release.release_time)
 
     assert sc1 != sc2
+    assert sc2 != sc1
+    assert not (sc1 == sc2)
+    assert not (sc2 == sc1)
 
 
 def test_model_step_is_done():
@@ -812,19 +881,18 @@ def test_model_step_is_done():
     tests that correct elements are released when their status_codes is toggled
     to basic_types.oil_status.to_be_removed
     """
-
     release_time = datetime(2012, 1, 1, 12)
     start_time2 = datetime(2012, 1, 2, 12)
     start_position = (23.0, -78.5, 0.0)
     num_elements = 10
     sc = SpillContainer()
-    spill = PointLineSource(num_elements, start_position,
+    sp1 = point_line_release_spill(num_elements, start_position,
             release_time)
 
-    sp2 = PointLineSource(num_elements, start_position,
+    sp2 = point_line_release_spill(num_elements, start_position,
                                     start_time2)
 
-    sc.spills += [spill, sp2]
+    sc.spills += [sp1, sp2]
 
     sc.prepare_for_model_run(windage_at)
 
@@ -851,26 +919,78 @@ def test_model_step_is_done():
     assert np.count_nonzero(sc['spill_num'] == 1) == num_elements - 4
 
 
+def test_SpillContainer_add_array_types():
+    '''
+    Test an array_type is dynamically added/subtracted from SpillContainer if
+    it is contained in Initailizer's array_types property.
+
+    For example:
+
+        Add 'rise_vel' initializer, InitRiseVelFromDropletSizeFromDist()) is
+        added to Spill's element_type object. Now, the array_types for this
+        initailizer are 'rise_vel' and 'droplet_diameter'. Only if a
+        RiseVelocityMover is added to the model in which case the Model
+        provides 'rise_vel' as an array_type to the SpillContainer to append
+        it to its own list, then the SpillContainer will also add the
+        'droplet_diameter' array_type that is additionally set by the
+        Initializer but is not explicitly required by the Mover.
+    '''
+    sc = SpillContainer()
+    s = Spill(Release(datetime(2014, 1, 1, 12, 0), 0))
+    s.set_initializer('rise_vel', InitRiseVelFromDropletSizeFromDist())
+    sc.spills += s
+    assert 'rise_vel' not in sc.array_types
+    assert 'droplet_diameter' not in sc.array_types
+
+    # Now say you added RiseVelocityMover and the Model collects ArrayTypes
+    # from all movers and passes it into SpillContainer's prepare_for_model_run
+    #
+    sc.prepare_for_model_run(array_types={'rise_vel': array_types.rise_vel})
+    assert 'rise_vel' in sc.array_types
+    assert 'droplet_diameter' in sc.array_types
+
+    # calling prepare_for_model_run without different array_types keeps the
+    # previously added 'rise_vel' array_types - always rewind if you want to
+    # clear out the state and reset array_types to original data
+    sc.prepare_for_model_run()
+    assert 'rise_vel' in sc.array_types
+    assert 'droplet_diameter' in sc.array_types
+
+    # Now let's rewind array_types and these extra properties should disappear
+    # they are only added after the prepare_for_model_run step
+    sc.rewind()
+    sc.prepare_for_model_run()
+    assert 'rise_vel' not in sc.array_types
+    assert 'droplet_diameter' not in sc.array_types
+
+
 def get_eq_spills():
     """
-    returns a tuple of identical PointLineSource objects
+    returns a tuple of identical point_line_release_spill objects
 
-    todo: The spill's element_type is forced to be ElementType() since
-    it is not being persisted and the default (Floating()) uses randomly
-    generated values for initial data array values and these will not match for
-    the two spills. Fix this be persisting element_type attribute and making
-    min and max windage_range equal so windages are the same.
+    Set the spill's element_type is to floating(windage_range=(0, 0))
+    since the default, floating(), uses randomly generated values for initial
+    data array values and these will not match for the two spills.
+
+    TODO: Currently does not persist the element_type object.
+    spill.to_dict('save') does not persist this attribute - Fix this.
     """
-
     num_elements = 10
     release_time = datetime(2000, 1, 1, 1)
 
-    spill = PointLineSource(num_elements,
+    spill = point_line_release_spill(num_elements,
                             (28, -75, 0),
                             release_time,
-                            element_type=elements.ElementType())
-    spill2 = PointLineSource.new_from_dict(spill.to_dict('create'))
-    spill2.element_type = elements.ElementType()
+                            element_type=floating(windage_range=(0, 0)))
+    #dict_ = spill.to_dict('save')
+    #spill2 = spill.new_from_dict(dict_)
+    spill2 = copy.deepcopy(spill)
+
+    # IDs will not match! force this so our tests work
+    spill2._id = spill.id
+
+    # check here if equal spills didn't get created - fail this function
+    assert spill == spill2
 
     return (spill, spill2)
 

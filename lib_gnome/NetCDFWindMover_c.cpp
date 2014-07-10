@@ -230,6 +230,7 @@ Boolean NetCDFWindMover_c::VelocityStrAtPoint(WorldPoint3D wp, char *diagnosticS
 	
 	lengthU = sqrt(velocity.u * velocity.u + velocity.v * velocity.v);
 	lengthS = this->fWindScale * lengthU;
+	if (lengthS > 1000000 || this->fWindScale==0) return true;	// if bad data in file causes a crash
 	
 	StringWithoutTrailingZeros(uStr,lengthU,4);
 	StringWithoutTrailingZeros(sStr,lengthS,4);
@@ -247,9 +248,13 @@ OSErr NetCDFWindMover_c::PrepareForModelRun()
 OSErr NetCDFWindMover_c::PrepareForModelStep(const Seconds& model_time, const Seconds& time_step, bool uncertain, int numLESets, int* LESetsSizesList)
 {
 	OSErr err = 0;
+
+	if (bIsFirstStep)
+		fModelStartTime = model_time;
 	if(uncertain) 
 	{
-		Seconds elapsed_time = model_time - fModelStartTime;
+		//Seconds elapsed_time = model_time - fModelStartTime;
+		Seconds elapsed_time = model_time + time_step - fModelStartTime;	// so uncertainty starts at time zero + uncertain_time_delay, rather than a time step later
 		err = this->UpdateUncertainty(elapsed_time, numLESets, LESetsSizesList);
 	}
 	

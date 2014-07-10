@@ -83,8 +83,8 @@ public:
 #endif
 	virtual					 ~ShioTimeValue_c () { this->Dispose (); }
 	virtual void			Dispose ();
-	virtual ClassID 		GetClassID () { return TYPE_SHIOTIMEVALUES; }
-	virtual Boolean			IAm(ClassID id) { if(id==TYPE_SHIOTIMEVALUES) return TRUE; return OSSMTimeValue_c::IAm(id); }
+	//virtual ClassID 		GetClassID () { return TYPE_SHIOTIMEVALUES; }
+	//virtual Boolean			IAm(ClassID id) { if(id==TYPE_SHIOTIMEVALUES) return TRUE; return OSSMTimeValue_c::IAm(id); }
 	virtual OSErr			ReadTimeValues (char *path);
 	virtual long			GetNumEbbFloodValues ();	
 	virtual long			GetNumHighLowValues ();
@@ -94,7 +94,7 @@ public:
 	virtual	double			GetDeriv (Seconds t1, double val1, Seconds t2, double val2, Seconds theTime);
 	virtual	OSErr			GetConvertedHeightValue(Seconds forTime, VelocityRec *value);
 	virtual	OSErr			GetProgressiveWaveValue(const Seconds& current_time, VelocityRec *value);
-	OSErr 					GetLocationInTideCycle(const Seconds& model_time, short *ebbFloodType, float *fraction);
+	virtual OSErr 			GetLocationInTideCycle(const Seconds& model_time, short *ebbFloodType, float *fraction);
 
 	virtual OSErr			InitTimeFunc ();
 			Boolean			DaylightSavingTimeInEffect(DateTimeRec *dateStdTime);	// AH 07/09/2012

@@ -46,16 +46,22 @@ public:
 #ifndef pyGNOME
 	GridWindMover_c (TMap *owner, char* name);
 #endif
-	GridWindMover_c () {}
+	GridWindMover_c ();
 	~GridWindMover_c () { Dispose (); }
 	virtual void		Dispose ();
 	
-	virtual ClassID 	GetClassID () { return TYPE_GRIDWINDMOVER; }
-	virtual Boolean		IAm(ClassID id) { if(id==TYPE_GRIDWINDMOVER) return TRUE; return WindMover_c::IAm(id); }
+	//virtual ClassID 	GetClassID () { return TYPE_GRIDWINDMOVER; }
+	//virtual Boolean		IAm(ClassID id) { if(id==TYPE_GRIDWINDMOVER) return TRUE; return WindMover_c::IAm(id); }
 
 	virtual WorldRect GetGridBounds(){return timeGrid->GetGridBounds();}	
 	void		SetTimeGrid(TimeGridVel *newTimeGrid) {timeGrid = newTimeGrid;}
 
+	void	SetExtrapolationInTime(bool extrapolate) {timeGrid->SetExtrapolationInTime(extrapolate);}	
+	bool	GetExtrapolationInTime() {return timeGrid->GetExtrapolationInTime();}	
+	
+	void	SetTimeShift(long timeShift) {timeGrid->SetTimeShift(timeShift);}	
+	long	GetTimeShift() {return timeGrid->GetTimeShift();}	
+	
 	virtual OSErr 		PrepareForModelRun(); 
 	virtual OSErr 		PrepareForModelStep(const Seconds&, const Seconds&, bool, int numLESets, int* LESetsSizesList); 
 	virtual void 		ModelStepIsDone();

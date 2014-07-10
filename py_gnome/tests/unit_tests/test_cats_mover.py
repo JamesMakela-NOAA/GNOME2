@@ -12,6 +12,7 @@ from gnome.movers import CatsMover
 from gnome.environment import Tide
 from gnome.utilities import time_utils
 from gnome.utilities.remote_data import get_datafile
+from gnome.persist import load
 
 from conftest import sample_sc_release
 
@@ -183,40 +184,18 @@ def _uncertain_loop(pSpill, cats):
     return u_delta
 
 
-def test_exception_new_from_dict():
+@pytest.mark.parametrize("tide", (None, td))
+def test_serialize_deserialize(tide):
     """
-    test exceptions raised for new_from_dict
-    """
-
-    c_cats = CatsMover(curr_file)
-    dict_ = c_cats.to_dict('create')
-    dict_.update({'tide': td})
-    with pytest.raises(KeyError):
-        CatsMover.new_from_dict(dict_)
-
-
-def test_new_from_dict_tide():
-    """
-    test to_dict function for Wind object
-    create a new wind object and make sure it has same properties
+    test serialize/deserialize/update_from_dict doesn't raise errors
     """
 
-    c_cats = CatsMover(curr_file, tide=td)
-    dict_ = c_cats.to_dict('create')
-    dict_.update({'tide': td})
-    c2 = CatsMover.new_from_dict(dict_)
-    assert c_cats == c2
+    c_cats = CatsMover(curr_file, tide=tide)
+    toserial = c_cats.serialize('webapi')
+    dict_ = c_cats.deserialize(toserial)
+    if tide:
+        assert 'tide' in toserial
+        dict_['tide'] = tide  # no longer updating properties of nested objects
+        assert c_cats.tide is tide
 
-
-def test_new_from_dict_curronly():
-    """
-    test to_dict function for Wind object
-    create a new wind object and make sure it has same properties
-    """
-
-    c_cats = CatsMover(curr_file)
-    dict_ = c_cats.to_dict('create')
-    c2 = CatsMover.new_from_dict(dict_)
-    assert c_cats == c2
-
-
+    c_cats.update_from_dict(dict_)

@@ -27,12 +27,17 @@ import glob
 import shutil
 
 # to support "develop" mode:
-from setuptools import setup
+from setuptools import setup, find_packages
 
 from distutils.extension import Extension
 from Cython.Distutils import build_ext
 
 import numpy as np
+
+try:
+    from gnome import __version__
+except: # gnome won't import if it's not built (properly) yet...
+    __version__ = "alpha"
 
 # could run setup from anywhere
 (SETUP_PATH, SETUP_FILE) = os.path.split(sys.argv[0])
@@ -124,7 +129,7 @@ if sys.argv.count(config) != 0:
 ##     failing to link because we netCDF library is 32 bit (I believe).
 ##     Added third_party_lib/win32/x86_64/netcdf.lib
 ##     Adding the netCDF bin directory and the dependency bin directory
-##     to the Path variable 
+##     to the Path variable
 
 ## setup our environment and architecture
 ## These should be properties that are used by all Extensions
@@ -173,34 +178,38 @@ if sys.platform is "darwin" or "win32":
         # On windows the dlls have the same names for those used by python's
         # netCDF4 module and PyGnome modules. For PyGnome, we had the latest
         # netcdf dlls from UCARR site but this was giving DLL import errors.
-        # The netcdf dlls that come with Python's netCDF4 module (C. Gohlke's site)
+        # Netcdf dlls that come with Python's netCDF4 module (C. Gohlke's site)
         # were different from the netcdf4 DLLs we got from UCARR.
         # For now, third_party_lib contains the DLLs installed in site-packages
         # from C. Gohlke's site.
         #
-        # Alternatively, we could also look for python netCDF4 package and copy DLLs from site-packages.
-        # This way the DLLs used and loaded by PyGnome are the same as the DLL used and
-        # expected by netCDF4. PyGnome loads the DLL with cy_basic_types.pyd and it also
-        # imports netCDF4 when netcdf_outputters module is imported - this was causing the
-        # previous conflict. The DLL loaded in memory should be consistent - that's the best
-        # understanding of current issue!
+        # Alternatively, we could also look for python netCDF4 package and copy
+        # DLLs from site-packages. This way the DLLs used and loaded by PyGnome
+        # are the same as the DLL used and expected by netCDF4. PyGnome loads
+        # the DLL with cy_basic_types.pyd and it also imports netCDF4 when
+        # netcdf_outputters module is imported - this was causing the previous
+        # conflict. The DLL loaded in memory should be consistent - that's the
+        # best understanding of current issue!
         # STILL WORKING ON A MORE PERMANENT SOLUTION
         win_dlls = os.path.join(netcdf_base, 'bin')
         dlls_path = os.path.join(os.getcwd(), win_dlls)
 
-        for dll in glob.glob(os.path.join(dlls_path,'*.dll')):
+        for dll in glob.glob(os.path.join(dlls_path, '*.dll')):
             dlls_dst = os.path.join(os.getcwd(), 'gnome/cy_gnome/')
 
+            dll_name = os.path.split(dll)[1]
             if sys.argv[1] == 'cleanall' or sys.argv[1] == 'clean':
-                (x_, dll_name) = os.path.split(dll)
                 rm_dll = os.path.join(dlls_dst, dll_name)
                 if os.path.exists(rm_dll):
                     os.remove(rm_dll)
                     print "deleted: " + rm_dll
             else:
-                print "copy: " + dll + " to: " + dlls_dst
-                shutil.copy(dll, dlls_dst)
-
+                # Note: wierd permissions/file locking thing on Windows -- 
+                #       couldn't delte or overwrite the dll...
+                #       so only copy if it's not there already
+                if not os.path.isfile(os.path.join(dlls_dst, dll_name)):
+                    print "copy: " + dll + " to: " + dlls_dst
+                    shutil.copy(dll, dlls_dst)
         netcdf_names = ('netcdf',)
     else:
         netcdf_names = ('hdf5', 'hdf5_hl', 'netcdf', 'netcdf_c++4')
@@ -214,7 +223,9 @@ extension_names = ['cy_mover',
                    'cy_helpers',
                    'cy_wind_mover',
                    'cy_cats_mover',
+                   'cy_component_mover',
                    'cy_gridcurrent_mover',
+                   'cy_currentcycle_mover',
                    'cy_gridwind_mover',
                    'cy_ossm_time',
                    'cy_random_mover',
@@ -245,6 +256,7 @@ cpp_files = ['RectGridVeL_c.cpp',
              #'NetCDFMover_c.cpp',
              'CATSMover_c.cpp',
              'CurrentMover_c.cpp',
+             'ComponentMover_c.cpp',
              'ShioTimeValue_c.cpp',
              'ShioHeight.cpp',
              'TriGridVel_c.cpp',
@@ -254,6 +266,7 @@ cpp_files = ['RectGridVeL_c.cpp',
              'ShioCurrent2.cpp',
              'GridCurrentMover_c.cpp',
              'GridWindMover_c.cpp',
+             'CurrentCycleMover_c.cpp',
              'TimeGridVel_c.cpp',
              'TimeGridWind_c.cpp',
              'MakeTriangles.cpp',
@@ -443,10 +456,27 @@ extensions.append(Extension("gnome.utilities.geometry.cy_point_in_polygon",
                   )
 
 setup(name='pyGnome',
-      version='alpha',
-      requires=['numpy'],
+      version=__version__,
+      ext_modules=extensions,
+      packages=find_packages(),
+      package_dir={'gnome': 'gnome'},
+      package_data={'gnome': ['data/yeardata/*']},
+      requires=['numpy'],   # want other packages here?
       cmdclass={'build_ext': build_ext},
-      ext_modules=extensions
+      #scripts,
+
+      #metadata for upload to PyPI
+      author="Gnome team at NOAA ORR",
+      author_email="orr.gnome@noaa.gov",
+      description=("GNOME (General NOAA Operational Modeling Environment) is "
+                    "the modeling tool the Office of Response and "
+                    "Restoration's (OR&R) Emergency Response Division uses to "
+                    "predict the possible route, or trajectory, a pollutant "
+                    "might follow in or on a body of water, such as in an "
+                    "oil spill."),
+      #license=
+      keywords="gnome oilspill modeling",
+      url="https://github.com/NOAA-ORR-ERD/GNOME2"
      )
 
 # Change current working directory back to what user originally had
